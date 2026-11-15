@@ -4,27 +4,266 @@
              xmlns:local="clr-namespace:CSharpFileRenamer"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-        <!-- Dynamic Theme Brushes (Khởi tạo mặc định Dark Theme) -->
-        <SolidColorBrush x:Key="ThemeBgWindow" Color="#0B0F19"/>
-        <SolidColorBrush x:Key="ThemeBgHeader" Color="#0F172A"/>
-        <SolidColorBrush x:Key="ThemeBgSubHeader" Color="#0C1322"/>
-        <SolidColorBrush x:Key="ThemeBgSidebar" Color="#0B0F19"/>
-        <SolidColorBrush x:Key="ThemeBgMainContent" Color="#090D16"/>
-        <SolidColorBrush x:Key="ThemeBgCard" Color="#0F172A"/>
-        <SolidColorBrush x:Key="ThemeBgCardAlt" Color="#131D31"/>
-        <SolidColorBrush x:Key="ThemeBgInput" Color="#020617"/>
-        <SolidColorBrush x:Key="ThemeBgFooter" Color="#020617"/>
-        <SolidColorBrush x:Key="ThemeBorder" Color="#1E293B"/>
-        <SolidColorBrush x:Key="ThemeBorderStrong" Color="#334155"/>
+        <!-- Dynamic Theme Brushes (Khởi tạo mặc định Deep Dark Theme) -->
+        <SolidColorBrush x:Key="ThemeBgWindow" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBgHeader" Color="#0A0D16"/>
+        <SolidColorBrush x:Key="ThemeBgSubHeader" Color="#070A12"/>
+        <SolidColorBrush x:Key="ThemeBgSidebar" Color="#070A12"/>
+        <SolidColorBrush x:Key="ThemeBgMainContent" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBgCard" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBgCardAlt" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBgInput" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBgFooter" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBorder" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeBorderStrong" Color="#2A364C"/>
         <SolidColorBrush x:Key="ThemeTextPrimary" Color="#F8FAFC"/>
         <SolidColorBrush x:Key="ThemeTextSecondary" Color="#94A3B8"/>
         <SolidColorBrush x:Key="ThemeTextMuted" Color="#64748B"/>
-        <SolidColorBrush x:Key="ThemeGridRowBg" Color="#0F172A"/>
-        <SolidColorBrush x:Key="ThemeGridRowAltBg" Color="#131D31"/>
-        <SolidColorBrush x:Key="ThemeGridHeaderBg" Color="#1E293B"/>
-        <SolidColorBrush x:Key="ThemeGridLines" Color="#1E293B"/>
-        <SolidColorBrush x:Key="ThemeGridOverlay" Color="#EE090D1A"/>
-        <SolidColorBrush x:Key="ThemeTabActiveBg" Color="#1E293B"/>
+        <SolidColorBrush x:Key="ThemeGridRowBg" Color="#0A0D16"/>
+        <SolidColorBrush x:Key="ThemeGridRowAltBg" Color="#0E121E"/>
+        <SolidColorBrush x:Key="ThemeGridHeaderBg" Color="#000000"/>
+        <SolidColorBrush x:Key="ThemeGridLines" Color="#161D2C"/>
+        <SolidColorBrush x:Key="ThemeGridOverlay" Color="#EB000000"/>
+        <SolidColorBrush x:Key="ThemeTabActiveBg" Color="#182032"/>
         <SolidColorBrush x:Key="ThemeTabInactiveBg" Color="Transparent"/>
+        <SolidColorBrush x:Key="ThemeAccent" Color="#6366F1"/>
+        <SolidColorBrush x:Key="ThemeAccentHover" Color="#4F46E5"/>
+        <SolidColorBrush x:Key="ThemeAccentText" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="ThemeCardHover" Color="#161E2E"/>
+        <SolidColorBrush x:Key="ThemeBadgeBg" Color="#18153E"/>
+        <SolidColorBrush x:Key="ThemeBadgeBorder" Color="#4338CA"/>
+        <SolidColorBrush x:Key="ThemeBadgeText" Color="#A5B4FC"/>
+
+        <!-- Custom Fluent Scrollbar Styles -->
+        <Style x:Key="ScrollBarThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="true"/>
+            <Setter Property="IsTabStop" Value="false"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="thumbBorder" Background="{DynamicResource ThemeBorderStrong}" CornerRadius="3" Opacity="0.6"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="true">
+                                <Setter TargetName="thumbBorder" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="thumbBorder" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="Stylus.IsPressAndHoldEnabled" Value="false"/>
+            <Setter Property="Stylus.IsFlicksEnabled" Value="false"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid x:Name="Bg" SnapsToDevicePixels="true" Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="true" IsEnabled="{TemplateBinding IsMouseOver}">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource ScrollBarThumb}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto"/>
+                    <Setter Property="MinWidth" Value="0"/>
+                    <Setter Property="Height" Value="8"/>
+                    <Setter Property="MinHeight" Value="8"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                <Grid x:Name="Bg" SnapsToDevicePixels="true" Background="Transparent">
+                                    <Track x:Name="PART_Track" IsEnabled="{TemplateBinding IsMouseOver}">
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource ScrollBarThumb}"/>
+                                        </Track.Thumb>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Modern Fluent CheckBox Style -->
+        <Style TargetType="{x:Type CheckBox}">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type CheckBox}">
+                        <Grid Margin="0,2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="chkBoxBorder" Width="18" Height="18" CornerRadius="4"
+                                    Background="{DynamicResource ThemeBgInput}"
+                                    BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1.5"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path x:Name="chkMark" Data="M 3.5,8.5 L 7,12 L 13.5,4.5"
+                                      Stroke="White" StrokeThickness="2"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                      Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="chkBoxBorder" Property="Background" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter TargetName="chkBoxBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter TargetName="chkMark" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="chkBoxBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Fluent RadioButton Style -->
+        <Style TargetType="{x:Type RadioButton}">
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextSecondary}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,3,0,3"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Grid Margin="0,1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="radOuter" Width="18" Height="18" CornerRadius="9"
+                                    Background="{DynamicResource ThemeBgInput}"
+                                    BorderBrush="{DynamicResource ThemeBorderStrong}" BorderThickness="1.5"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Ellipse x:Name="radDot" Width="8" Height="8"
+                                         Fill="{DynamicResource ThemeAccent}"
+                                         Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+                                <Setter TargetName="radOuter" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                                <Setter TargetName="radDot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="radOuter" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Fluent TextBox Style -->
+        <Style TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="{DynamicResource ThemeBgInput}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeTextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderStrong}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource ThemeTextPrimary}"/>
+            <Setter Property="SelectionBrush" Value="{DynamicResource ThemeAccent}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TextBox}">
+                        <Border x:Name="txtBorder" CornerRadius="6"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="false" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="txtBorder" Property="BorderBrush" Value="{DynamicResource ThemeBorderStrong}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="txtBorder" Property="BorderBrush" Value="{DynamicResource ThemeAccent}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern Fluent Slider Style -->
+        <Style TargetType="{x:Type Slider}">
+            <Setter Property="Stylus.IsPressAndHoldEnabled" Value="false"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource ThemeAccent}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Slider}">
+                        <Grid VerticalAlignment="Center">
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.DecreaseLarge}">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                <Border Height="4" CornerRadius="2" Background="{DynamicResource ThemeAccent}"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static Slider.IncreaseLarge}">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="{x:Type RepeatButton}">
+                                                <Border Height="4" CornerRadius="2" Background="{DynamicResource ThemeBorderStrong}"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="{x:Type Thumb}">
+                                                <Border Width="18" Height="18" CornerRadius="9"
+                                                        Background="{DynamicResource ThemeBgHeader}"
+                                                        BorderBrush="{DynamicResource ThemeAccent}" BorderThickness="3">
+                                                    <Border.Effect>
+                                                        <DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.3"/>
+                                                    </Border.Effect>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Application.Resources>
 </Application>

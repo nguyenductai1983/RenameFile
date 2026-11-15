@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Rename File Viet Contributors"]
 description = "Rename File Viet Desktop - Tauri v2 + React TypeScript"
+repository = "https://github.com/nguyenductai1983/RenameFile"
+license = "MIT"
 
 [lib]
 name = "rename_file_viet"

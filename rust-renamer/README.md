@@ -1,5 +1,9 @@
 # Rename File Viet - Rust Tauri Edition
 
+> Kho mã nguồn GitHub: **[https://github.com/nguyenductai1983/RenameFile](https://github.com/nguyenductai1983/RenameFile)**
+>
+> Để lấy code mới nhất: `git clone https://github.com/nguyenductai1983/RenameFile.git`
+
 Phiên bản Rename File Viet được phát triển bằng **Rust (Tauri v2)** và **React 18 + TypeScript + Tailwind CSS**. Phiên bản này đem lại sự cân bằng giữa hiệu năng cực đỉnh, mức chiếm dụng bộ nhớ (RAM) tối thiểu cùng giao diện web hiện đại, mượt mà.
 
 ---

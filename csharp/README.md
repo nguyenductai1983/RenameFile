@@ -1,5 +1,9 @@
 # Rename File Viet - C# WPF Edition
 
+> Kho mã nguồn GitHub: **[https://github.com/nguyenductai1983/RenameFile](https://github.com/nguyenductai1983/RenameFile)**
+>
+> Để lấy code mới nhất: `git clone https://github.com/nguyenductai1983/RenameFile.git`
+
 Phiên bản Rename File Viet được phát triển bằng **C# (.NET 11)** và **WPF (Windows Presentation Foundation)**. Đây là phiên bản tối ưu sâu cho hệ điều hành Windows, có khả năng tích hợp tự động với giao diện Sáng / Tối (Light / Dark Theme) của Windows và xử lý hàng trăm nghìn tệp tin với hiệu năng cao.
 
 ---

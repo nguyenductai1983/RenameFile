@@ -74,7 +74,7 @@ namespace CSharpFileRenamer
                     break;
                 case AppThemeMode.Light:
                     _currentThemeMode = AppThemeMode.System;
-                    BtnThemeToggle.Content = "🌓 Theo Windows";
+                    BtnThemeToggle.Content = "🌓 Tự động";
                     ThemeManager.ApplyTheme(ThemeManager.IsWindowsDarkTheme(), this);
                     break;
             }
@@ -366,15 +366,25 @@ namespace CSharpFileRenamer
         {
             if (_isInitializing || TxtImgMaxWidth == null || TxtImgMaxHeight == null) return;
 
-            if (RadPresetFHD?.IsChecked == true)
+            if (RadPreset4K?.IsChecked == true)
             {
-                TxtImgMaxWidth.Text = "1920";
-                TxtImgMaxHeight.Text = "1080";
+                TxtImgMaxWidth.Text = "3840";
+                TxtImgMaxHeight.Text = "2160";
             }
             else if (RadPreset2K?.IsChecked == true)
             {
                 TxtImgMaxWidth.Text = "2560";
                 TxtImgMaxHeight.Text = "1440";
+            }
+            else if (RadPresetFHD?.IsChecked == true)
+            {
+                TxtImgMaxWidth.Text = "1920";
+                TxtImgMaxHeight.Text = "1080";
+            }
+            else if (RadPreset1360?.IsChecked == true)
+            {
+                TxtImgMaxWidth.Text = "1360";
+                TxtImgMaxHeight.Text = "768";
             }
             else if (RadPresetHD?.IsChecked == true)
             {
@@ -846,12 +856,17 @@ namespace CSharpFileRenamer
             {
                 _allResults.Clear();
                 GridFiles.ItemsSource = null;
+                if (PanelEmptyState != null) PanelEmptyState.Visibility = Visibility.Visible;
+                if (GridFiles != null) GridFiles.Visibility = Visibility.Collapsed;
                 TxtItemCount.Text = "Sẵn sàng: 0 tệp tin";
                 TxtBenchTime.Text = "0.00 ms";
                 TxtBenchThroughput.Text = "0 tệp/giây";
                 if (BannerLongPath != null) BannerLongPath.Visibility = Visibility.Collapsed;
                 return;
             }
+
+            if (PanelEmptyState != null) PanelEmptyState.Visibility = Visibility.Collapsed;
+            if (GridFiles != null) GridFiles.Visibility = Visibility.Visible;
 
             var pipeline = BuildPipeline();
             var engine = new RenamerEngine(pipeline);
@@ -1131,6 +1146,157 @@ namespace CSharpFileRenamer
         {
             BannerMessage.Visibility = Visibility.Collapsed;
         }
+
+        #region About & GitHub Links
+
+        private void BrandLogo_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            ShowAboutModal();
+        }
+
+        private void BtnAbout_Click(object sender, RoutedEventArgs e)
+        {
+            ShowAboutModal();
+        }
+
+        private void BtnCloseAbout_Click(object sender, RoutedEventArgs e)
+        {
+            ModalAbout.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowAboutModal()
+        {
+            ModalAbout.Visibility = Visibility.Visible;
+        }
+
+        private void BtnDownloadUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            OpenUrl("https://github.com/nguyenductai1983/RenameFile/releases");
+        }
+
+        private void BtnGitHub_Click(object sender, RoutedEventArgs e)
+        {
+            OpenUrl("https://github.com/nguyenductai1983/RenameFile");
+        }
+
+        private void BtnGitHubIssues_Click(object sender, RoutedEventArgs e)
+        {
+            OpenUrl("https://github.com/nguyenductai1983/RenameFile/issues");
+        }
+
+        private void TxtGitHubLink_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            ShowAboutModal();
+        }
+
+        private void OpenUrl(string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                ShowBanner($"Không thể mở trình duyệt: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Drag and Drop Handling
+
+        private void Window_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effects = DragDropEffects.Copy;
+                e.Handled = true;
+            }
+        }
+
+        private async void Window_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                var paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+                if (paths != null && paths.Length > 0)
+                {
+                    await HandleDroppedPathsAsync(paths);
+                }
+            }
+        }
+
+        private async Task HandleDroppedPathsAsync(string[] paths)
+        {
+            if (paths.Length == 1 && Directory.Exists(paths[0]))
+            {
+                _currentFolderPath = paths[0];
+                TxtCurrentFolder.Text = _currentFolderPath;
+                BtnOpenExplorer.Visibility = Visibility.Visible;
+                BtnCloseFolder.Visibility = Visibility.Visible;
+
+                _loadedFiles.Clear();
+                _allResults.Clear();
+                GridFiles.ItemsSource = null;
+                TxtSearch.Text = "";
+                if (RadFilterAll != null) RadFilterAll.IsChecked = true;
+
+                await RescanCurrentFolderAsync();
+            }
+            else
+            {
+                _isRenamed = false;
+                BtnApply.IsEnabled = true;
+                BtnApply.Content = "▶ Bắt Đầu Đổi Tên";
+
+                _currentFolderPath = "";
+                TxtCurrentFolder.Text = $"(Đang chọn {paths.Length} tệp tin từ kéo thả)";
+                BtnOpenExplorer.Visibility = Visibility.Collapsed;
+                BtnCloseFolder.Visibility = Visibility.Collapsed;
+
+                _loadedFiles.Clear();
+                _allResults.Clear();
+                GridFiles.ItemsSource = null;
+                TxtSearch.Text = "";
+                if (RadFilterAll != null) RadFilterAll.IsChecked = true;
+
+                SetGridLoading(true, "Đang nạp tệp tin...", $"Đang xử lý {paths.Length:N0} mục kéo thả...");
+
+                try
+                {
+                    foreach (var p in paths)
+                    {
+                        if (File.Exists(p))
+                        {
+                            _loadedFiles.Add(p);
+                        }
+                        else if (Directory.Exists(p))
+                        {
+                            var scanned = await DirectoryScanner.ScanAsync(
+                                p, 
+                                ChkRecursive.IsChecked == true, 
+                                ChkHidden.IsChecked == true, 
+                                ChkFolders.IsChecked == true);
+                            _loadedFiles.AddRange(scanned);
+                        }
+                    }
+
+                    await RecomputePreviewAsync();
+                    await LoadAndInspectImagesAsync();
+                    ShowBanner($"Đã nạp thành công {_loadedFiles.Count:N0} tệp tin");
+                }
+                finally
+                {
+                    SetGridLoading(false);
+                }
+            }
+        }
+
+        #endregion
 
         #endregion
     }

@@ -1,6 +1,12 @@
 # 🇻🇳 Rename File Viet
 
-> **Rename File Viet** là tiện ích mã nguồn mở nhỏ gọn, mạnh mẽ và an toàn giúp đổi tên hàng loạt tệp tin và thư mục (Batch File & Folder Renamer) với tốc độ cao, hỗ trợ chuẩn hóa tiếng Việt, xử lý đường dẫn dài (Long Path), và phòng chống xung đột tên tệp tin tự động.
+[![GitHub Repository](https://img.shields.io/badge/GitHub-nguyenductai1983%2FRenameFile-blue?style=for-the-badge&logo=github)](https://github.com/nguyenductai1983/RenameFile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://github.com/nguyenductai1983/RenameFile/blob/main/LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6?style=for-the-badge&logo=windows)](https://github.com/nguyenductai1983/RenameFile)
+
+> **Rename File Viet** là tiện ích mã nguồn mở nhỏ gọn, mạnh mẽ và an toàn giúp đổi tên hàng loạt tệp tin và thư mục (Batch File & Folder Renamer) cùng tính năng nén & giảm kích thước ảnh hàng loạt (Image Resizer) với tốc độ cao.
+>
+> 🌐 **Kho mã nguồn chính thức:** [https://github.com/nguyenductai1983/RenameFile](https://github.com/nguyenductai1983/RenameFile)
 
 Dự án cung cấp **2 phiên bản độc lập (Dual-Engine)** cùng chia sẻ tư duy thiết kế và tính năng, cho phép bạn lựa chọn công nghệ phù hợp nhất:
 1. **C# WPF Edition** (`csharp/`): Tối ưu sâu cho hệ sinh thái Windows, hỗ trợ Dark/Light theme theo Windows, kiến trúc trong suốt.
@@ -88,7 +94,19 @@ RenameFile/
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Biên Dịch
+## 🚀 Hướng Dẫn Tải & Biên Dịch Mã Nguồn
+
+### 0. Lấy mã nguồn mới nhất từ GitHub
+```bash
+# Clone toàn bộ dự án về máy
+git clone https://github.com/nguyenductai1983/RenameFile.git
+
+# Di chuyển vào thư mục dự án
+cd RenameFile
+
+# Cập nhật code mới nhất từ GitHub (nếu đã clone trước đó)
+git pull origin main
+```
 
 ### 1. Biên dịch Phiên bản C# (.NET 11 WPF)
 Yêu cầu: Đã cài đặt [.NET 11 SDK](https://dotnet.microsoft.com/).
@@ -98,6 +116,9 @@ cd csharp
 
 # Chạy thử nghiệm
 dotnet run
+
+# Chạy bộ tự kiểm tra (Self-test)
+dotnet run -- --test
 
 # Xuất bản file chạy Release
 dotnet publish -c Release -r win-x64 --self-contained false -o publish
@@ -122,10 +143,12 @@ File thực thi nằm tại: `rust-renamer/src-tauri/target/release/rename-file-
 
 ---
 
-## 🤝 Đóng Góp Phát Triển (Contributing)
+## 🤝 Đóng Góp Phát Triển & Báo Lỗi (Issues)
 
-Mọi đóng góp, báo lỗi (Issues) hoặc đề xuất tính năng mới (Pull Requests) đều rất được hoan nghênh:
-1. Fork dự án về tài khoản của bạn.
+Kho lưu trữ chính thức: **[https://github.com/nguyenductai1983/RenameFile](https://github.com/nguyenductai1983/RenameFile)**
+
+Mọi đóng góp, báo lỗi ([Issues](https://github.com/nguyenductai1983/RenameFile/issues)) hoặc đề xuất tính năng mới ([Pull Requests](https://github.com/nguyenductai1983/RenameFile/pulls)) đều rất được hoan nghênh:
+1. Fork dự án: `https://github.com/nguyenductai1983/RenameFile/fork`.
 2. Tạo nhánh tính năng mới: `git checkout -b feature/tinh-nang-moi`.
 3. Commit thay đổi: `git commit -m 'Thêm tính năng mới'`.
 4. Push lên nhánh của bạn: `git push origin feature/tinh-nang-moi`.

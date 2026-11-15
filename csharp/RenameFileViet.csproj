@@ -9,6 +9,8 @@
     <ApplicationIcon>app.ico</ApplicationIcon>
     <RootNamespace>CSharpFileRenamer</RootNamespace>
     <AssemblyName>RenameFileViet</AssemblyName>
+    <RepositoryUrl>https://github.com/nguyenductai1983/RenameFile</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/nguyenductai1983/RenameFile</PackageProjectUrl>
     <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
   </PropertyGroup>
 

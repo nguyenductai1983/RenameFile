@@ -2,6 +2,14 @@
   "name": "rename-file-viet-workspace",
   "private": true,
   "description": "Rename File Viet Monorepo Root",
+  "homepage": "https://github.com/nguyenductai1983/RenameFile",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nguyenductai1983/RenameFile.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nguyenductai1983/RenameFile/issues"
+  },
   "scripts": {
     "dev": "npm --prefix rust-renamer run dev",
     "build": "npm --prefix rust-renamer run build",

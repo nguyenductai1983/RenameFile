@@ -7,8 +7,8 @@ pub mod rules;
 
 use commands::{
     apply_renaming, batch_resize_and_overwrite_images, cancel_scan, export_to_csv,
-    inspect_image_files, open_folder_in_os, preview_renaming, rollback_renaming,
-    scan_selected_directory, select_files, select_folder, AppState,
+    inspect_image_files, open_folder_in_os, open_url_in_browser, preview_renaming,
+    rollback_renaming, scan_selected_directory, select_files, select_folder, AppState,
 };
 use core::transaction::TransactionManager;
 use std::sync::atomic::AtomicBool;
@@ -31,6 +31,7 @@ fn main() {
             rollback_renaming,
             export_to_csv,
             open_folder_in_os,
+            open_url_in_browser,
             inspect_image_files,
             batch_resize_and_overwrite_images
         ])

@@ -3,11 +3,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
   FolderOpen,
+  FolderPlus,
   Play,
   RotateCcw,
   CheckCircle2,
   AlertTriangle,
-  FileCode,
+  AlertCircle,
+  FileText,
   Trash2,
   FileSpreadsheet,
   ExternalLink,
@@ -17,12 +19,21 @@ import {
   Hash,
   Type,
   Loader2,
-  FileText,
   Image as ImageIcon,
+  Settings,
+  X,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { ConfirmOverwriteModal } from './components/ConfirmOverwriteModal';
 import { ImageResizerView, ImageItem, ResizeResultItem } from './components/ImageResizerView';
 import { ResizeConfig } from './components/ConfirmOverwriteModal';
+import { AboutModal } from './components/AboutModal';
+
+// ==========================================
+// 1. ĐỊNH NGHĨA KIỂU DỮ LIỆU (TYPES)
+// ==========================================
 
 interface ResizeProgressPayload {
   current: number;
@@ -48,15 +59,16 @@ interface FileItem {
   new_name: string;
   status: string;
   full_path_len?: number;
+  is_collision?: boolean;
   is_long_path?: boolean;
+  path_length?: number;
 }
 
-interface ActiveRules {
-  // Tab 1: Chuẩn hóa & Dấu
-  remove_vietnamese: boolean;
-  clean_whitespace: boolean;
-  space_rule: boolean;
-  space_action: 'remove_all' | 'trim' | 'collapse';
+interface RenameRulesConfig {
+  // Tab 1: Chuẩn Hóa
+  remove_diacritics: boolean;
+  clean_space: boolean;
+  space_action: 'collapse' | 'trim' | 'remove_all';
   sanitize: boolean;
   sanitize_replacement: string;
   web_safe_slug: boolean;
@@ -90,69 +102,165 @@ interface ActiveRules {
   new_extension: string;
 }
 
+function buildRulePayload(currentRules: RenameRulesConfig) {
+  const ruleConfigs: unknown[] = [];
+
+  // Tab 1: Chuẩn Hóa & Tiếng Việt
+  if (currentRules.remove_diacritics) {
+    ruleConfigs.push({ type: 'remove_vietnamese', scope: 'StemOnly' });
+  }
+  if (currentRules.clean_space) {
+    ruleConfigs.push({
+      type: 'space',
+      action: currentRules.space_action,
+      scope: 'StemOnly',
+    });
+  }
+  if (currentRules.sanitize) {
+    ruleConfigs.push({
+      type: 'sanitize',
+      replacement: currentRules.sanitize_replacement || '_',
+      scope: 'FullName',
+    });
+  }
+  if (currentRules.web_safe_slug) {
+    ruleConfigs.push({
+      type: 'web_safe_slug',
+      separator: currentRules.slug_separator,
+      scope: 'StemOnly',
+    });
+  }
+
+  // Tab 2: Tìm kiếm và Thay thế
+  if (currentRules.find_replace && currentRules.find_text) {
+    ruleConfigs.push({
+      type: 'find_replace',
+      find: currentRules.find_text,
+      replace: currentRules.replace_text,
+      use_regex: currentRules.find_regex,
+      match_case: currentRules.find_match_case,
+      scope: 'StemOnly',
+    });
+  }
+
+  // Tab 3: Tiền tố / Hậu tố & Đánh số
+  if (currentRules.prefix_suffix && (currentRules.prefix_text || currentRules.suffix_text)) {
+    ruleConfigs.push({
+      type: 'prefix_suffix',
+      prefix: currentRules.prefix_text,
+      suffix: currentRules.suffix_text,
+      scope: 'StemOnly',
+    });
+  }
+  if (currentRules.numbering) {
+    ruleConfigs.push({
+      type: 'numbering',
+      start: currentRules.numbering_start,
+      step: currentRules.numbering_step,
+      padding: currentRules.numbering_padding,
+      position: currentRules.numbering_position,
+      custom_text: currentRules.numbering_custom_text,
+      scope: 'StemOnly',
+    });
+  }
+
+  // Tab 4: Kiểu chữ & Extension
+  if (currentRules.case_transform) {
+    ruleConfigs.push({
+      type: 'case',
+      case_type: currentRules.case_type,
+      scope: 'StemOnly',
+    });
+  }
+  if (currentRules.change_extension && currentRules.new_extension.trim()) {
+    ruleConfigs.push({
+      type: 'change_extension',
+      new_extension: currentRules.new_extension.trim(),
+    });
+  }
+
+  // Co gọn đường dẫn an toàn MAX_PATH (áp dụng cuối cùng)
+  if (currentRules.truncate_long_path) {
+    ruleConfigs.push({
+      type: 'truncate_long_path',
+      max_length: currentRules.max_path_length,
+      use_middle: currentRules.use_middle_ellipsis,
+    });
+  }
+
+  return ruleConfigs;
+}
+
+// ==========================================
+// 2. COMPONENT CHÍNH (APP)
+// ==========================================
+
 export default function App() {
-  // Chế độ chính của ứng dụng: Đổi tên file hoặc Giảm kích thước ảnh
+  // Chế độ giao diện (Theme): 'system' (theo HĐH) | 'dark' (Tối) | 'light' (Sáng)
+  type ThemeMode = 'system' | 'light' | 'dark';
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('app-theme') as ThemeMode) || 'system';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const applyTheme = () => {
+      const isDark =
+        themeMode === 'dark' ||
+        (themeMode === 'system' && mediaQuery.matches);
+
+      if (isDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    };
+
+    applyTheme();
+    localStorage.setItem('app-theme', themeMode);
+
+    const listener = () => {
+      if (themeMode === 'system') {
+        applyTheme();
+      }
+    };
+
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, [themeMode]);
+
+  const toggleTheme = () => {
+    setThemeMode((prev) => {
+      if (prev === 'system') return 'dark';
+      if (prev === 'dark') return 'light';
+      return 'system';
+    });
+  };
+
+  // Chế độ ứng dụng: 'renamer' (Đổi tên) | 'resizer' (Giảm dung lượng ảnh)
   const [mainMode, setMainMode] = useState<'renamer' | 'resizer'>('renamer');
 
-  // Danh sách ảnh & cấu hình nén/thu nhỏ ảnh
-  const [imageItems, setImageItems] = useState<ImageItem[]>([]);
-  const [isInspectingImages, setIsInspectingImages] = useState(false);
-  const [selectedImagePaths, setSelectedImagePaths] = useState<Set<string>>(new Set());
-  const [resizeConfig, setResizeConfig] = useState<ResizeConfig>({
-    max_width: 1920,
-    max_height: 1080,
-    preserve_aspect_ratio: true,
-    quality: 80,
-    format_mode: 'original',
-  });
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeProgress, setResizeProgress] = useState<ResizeProgressPayload | null>(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [resizeResults, setResizeResults] = useState<Record<string, ResizeResultItem>>({});
-
+  // Danh sách tệp & Kết quả xem trước đổi tên
   const [files, setFiles] = useState<string[]>([]);
   const [previewItems, setPreviewItems] = useState<FileItem[]>([]);
+  const [currentFolderPath, setCurrentFolderPath] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+  const [isRenamed, setIsRenamed] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Tab cấu hình quy tắc hiện tại
+  // Benchmark hiệu năng
+  const [benchmarkTime, setBenchmarkTime] = useState<number>(0);
+  const [benchmarkThroughput, setBenchmarkThroughput] = useState<number>(0);
+
+  // Tab cấu hình quy tắc trong Sidebar
   const [activeTab, setActiveTab] = useState<'clean' | 'find_replace' | 'numbering' | 'case'>('clean');
 
-  // Bộ lọc tìm kiếm nhanh trong bảng danh sách
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'renamed' | 'unchanged' | 'collision'>('all');
-
-  // Trạng thái phiên đổi tên vừa thực thi (ngăn preview tự động ghi đè tên ban đầu)
-  const [isRenamed, setIsRenamed] = useState(false);
-
-  // Thư mục hiện tại đang được chọn để quét
-  const [currentFolderPath, setCurrentFolderPath] = useState<string>('');
-
-  // Trạng thái quét tệp tin ngầm & tiến độ thời gian thực
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState<{
-    count: number;
-    currentDir: string;
-    dirCount?: number;
-    skippedCount?: number;
-    lastSkipped?: string;
-  }>({
-    count: 0,
-    currentDir: '',
-    dirCount: 0,
-    skippedCount: 0,
-    lastSkipped: '',
-  });
-
-  // Tùy chọn quét thư mục nâng cao
-  const [recursiveScan, setRecursiveScan] = useState(true);
-  const [includeHidden, setIncludeHidden] = useState(false);
-  const [includeFolders, setIncludeFolders] = useState(false);
-
-  const [rules, setRules] = useState<ActiveRules>({
-    remove_vietnamese: true,
-    clean_whitespace: false,
-    space_rule: true,
+  // Cấu hình quy tắc đổi tên (Rules)
+  const [rules, setRules] = useState<RenameRulesConfig>({
+    remove_diacritics: true,
+    clean_space: true,
     space_action: 'collapse',
     sanitize: true,
     sanitize_replacement: '_',
@@ -181,358 +289,276 @@ export default function App() {
     case_transform: false,
     case_type: 'title',
     change_extension: false,
-    new_extension: '',
+    new_extension: 'png',
   });
 
-  // Khi thay đổi quy tắc, nếu phiên trước đã đổi tên thì bắt đầu phiên mới trên các file hiện tại
-  const updateRules = (updater: (prev: ActiveRules) => ActiveRules) => {
-    setRules((prev) => {
-      const next = updater(prev);
-      if (isRenamed) {
-        const currentDiskFiles = previewItems.map((item) => item.path);
-        setFiles(currentDiskFiles);
-        setIsRenamed(false);
-      }
-      return next;
-    });
+  // Tùy chọn phạm vi quét
+  const [recursiveScan, setRecursiveScan] = useState<boolean>(true);
+  const [includeHidden, setIncludeHidden] = useState<boolean>(false);
+  const [includeFolders, setIncludeFolders] = useState<boolean>(true);
+
+  // Tìm kiếm & Lọc trong bảng
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'renamed' | 'unchanged' | 'collision' | 'long_path'>('all');
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  // Quản lý Modal & Ảnh (Image Resizer)
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [imageItems, setImageItems] = useState<ImageItem[]>([]);
+  const [isInspectingImages, setIsInspectingImages] = useState(false);
+  const [selectedImagePaths, setSelectedImagePaths] = useState<Set<string>>(new Set());
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeProgress, setResizeProgress] = useState<ResizeProgressPayload | null>(null);
+  const [resizeResults, setResizeResults] = useState<Record<string, ResizeResultItem>>({});
+  const [resizeConfig, setResizeConfig] = useState<ResizeConfig>({
+    max_width: 1920,
+    max_height: 1080,
+    preserve_aspect_ratio: true,
+    quality: 80,
+    format_mode: 'original',
+  });
+
+  // Giới hạn hiển thị Virtualized DOM
+  const [displayLimit, setDisplayLimit] = useState(500);
+  const [isExpanding, setIsExpanding] = useState(false);
+
+  // ==========================================
+  // 3. LOGIC XỬ LÝ (HANDLERS)
+  // ==========================================
+
+  // Cập nhật cấu hình quy tắc
+  const updateRule = <K extends keyof RenameRulesConfig>(key: K, value: RenameRulesConfig[K]) => {
+    setRules((prev) => ({ ...prev, [key]: value }));
   };
 
-  const triggerPreview = useCallback(async (currentFiles: string[], currentRules: ActiveRules) => {
-    if (currentFiles.length === 0) {
-      setPreviewItems([]);
-      return;
+  // Tính toán trước danh sách đổi tên (Preview)
+  const computePreview = useCallback(
+    async (filePaths: string[]) => {
+      if (filePaths.length === 0) {
+        setPreviewItems([]);
+        setBenchmarkTime(0);
+        setBenchmarkThroughput(0);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const startTime = performance.now();
+        const ruleConfigs = buildRulePayload(rules);
+        const results = await invoke<FileItem[]>('preview_renaming', {
+          files: filePaths,
+          rules: ruleConfigs,
+        });
+
+        const elapsed = Math.max(1, performance.now() - startTime);
+        const throughput = Math.round((filePaths.length / (elapsed / 1000)));
+
+        const normalized = results.map((item) => ({
+          ...item,
+          path_length: item.full_path_len || item.path.length,
+          is_collision: item.status === 'collision_resolved',
+        }));
+
+        setPreviewItems(normalized);
+        setBenchmarkTime(elapsed);
+        setBenchmarkThroughput(throughput);
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setMessage({ text: `Lỗi tính toán xem trước: ${errMsg}`, type: 'error' });
+      } finally {
+        setLoading(false);
+      }
+    },
+    [rules]
+  );
+
+  // Tự động tính lại khi tệp hoặc quy tắc thay đổi
+  useEffect(() => {
+    if (!isRenamed && files.length > 0) {
+      computePreview(files);
     }
+  }, [rules, files, isRenamed, computePreview]);
 
-    try {
-      setLoading(true);
-      const ruleConfigs = [];
-
-      if (currentRules.remove_vietnamese) {
-        ruleConfigs.push({ type: 'remove_vietnamese', scope: 'StemOnly' });
-      }
-      if (currentRules.sanitize) {
-        ruleConfigs.push({
-          type: 'sanitize',
-          replacement: currentRules.sanitize_replacement,
-          scope: 'FullName',
-        });
-      }
-      if (currentRules.clean_whitespace) {
-        ruleConfigs.push({ type: 'clean_whitespace', scope: 'StemOnly' });
-      }
-      if (currentRules.space_rule) {
-        ruleConfigs.push({
-          type: 'space',
-          action: currentRules.space_action,
-          scope: 'StemOnly',
-        });
-      }
-      if (currentRules.web_safe_slug) {
-        ruleConfigs.push({
-          type: 'web_safe_slug',
-          separator: currentRules.slug_separator,
-          scope: 'StemOnly',
-        });
-      }
-
-      // Tab 2: Tìm kiếm và Thay thế (Find & Replace)
-      if (currentRules.find_replace && currentRules.find_text) {
-        ruleConfigs.push({
-          type: 'find_replace',
-          find: currentRules.find_text,
-          replace: currentRules.replace_text,
-          use_regex: currentRules.find_regex,
-          match_case: currentRules.find_match_case,
-          scope: 'StemOnly',
-        });
-      }
-
-      // Tab 3: Tiền tố & Hậu tố (Prefix/Suffix) & Đánh số thứ tự (Numbering)
-      if (currentRules.prefix_suffix && (currentRules.prefix_text || currentRules.suffix_text)) {
-        ruleConfigs.push({
-          type: 'prefix_suffix',
-          prefix: currentRules.prefix_text,
-          suffix: currentRules.suffix_text,
-          scope: 'StemOnly',
-        });
-      }
-      if (currentRules.numbering) {
-        ruleConfigs.push({
-          type: 'numbering',
-          start: currentRules.numbering_start,
-          step: currentRules.numbering_step,
-          padding: currentRules.numbering_padding,
-          position: currentRules.numbering_position,
-          custom_text: currentRules.numbering_custom_text,
-          scope: 'StemOnly',
-        });
-      }
-
-      // Tab 4: Đổi kiểu chữ (Case Transform) & Thay đổi extension
-      if (currentRules.case_transform) {
-        ruleConfigs.push({
-          type: 'case',
-          case_type: currentRules.case_type,
-          scope: 'StemOnly',
-        });
-      }
-      if (currentRules.change_extension && currentRules.new_extension.trim()) {
-        ruleConfigs.push({
-          type: 'change_extension',
-          new_extension: currentRules.new_extension.trim(),
-        });
-      }
-
-      // Tối ưu hóa Full Path an toàn (áp dụng cuối cùng trong pipeline để đảm bảo an toàn tuyệt đối)
-      if (currentRules.truncate_long_path) {
-        ruleConfigs.push({
-          type: 'truncate_long_path',
-          max_length: currentRules.max_path_length,
-          use_middle: currentRules.use_middle_ellipsis,
-        });
-      }
-
-      const results = await invoke<FileItem[]>('preview_renaming', {
-        files: currentFiles,
-        rules: ruleConfigs,
+  // Quét thông tin ảnh khi danh sách tệp thay đổi
+  useEffect(() => {
+    const inspectImages = async () => {
+      const imgExts = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff', '.gif'];
+      const filtered = files.filter((f) => {
+        const lower = f.toLowerCase();
+        return imgExts.some((ext) => lower.endsWith(ext));
       });
 
-      setPreviewItems(results);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setMessage({ text: `Lỗi xem trước: ${errMsg}`, type: 'error' });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (filtered.length === 0) {
+        setImageItems([]);
+        setSelectedImagePaths(new Set());
+        return;
+      }
 
-  // Chỉ tự động tính toán preview khi chưa bấm nút "Đổi Tên"
-  useEffect(() => {
-    if (!isRenamed) {
-      triggerPreview(files, rules);
-    }
-  }, [files, rules, triggerPreview, isRenamed]);
-
-  // Lắng nghe sự kiện streaming tiến độ quét thư mục từ Rust Backend
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-    listen<{
-      count: number;
-      current_dir: string;
-      dir_count?: number;
-      skipped_count?: number;
-      last_skipped?: string;
-    }>('scan-progress', (event) => {
-      setScanProgress({
-        count: event.payload.count,
-        currentDir: event.payload.current_dir,
-        dirCount: event.payload.dir_count ?? 0,
-        skippedCount: event.payload.skipped_count ?? 0,
-        lastSkipped: event.payload.last_skipped ?? '',
-      });
-    }).then((unlisten) => {
-      unlistenFn = unlisten;
-    });
-
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, []);
-
-  // Lắng nghe sự kiện tiến độ giảm kích thước ảnh từ Rust Backend
-  useEffect(() => {
-    let unlistenFn: (() => void) | null = null;
-    listen<ResizeProgressPayload>('image-resize-progress', (event) => {
-      setResizeProgress(event.payload);
-    }).then((unlisten) => {
-      unlistenFn = unlisten;
-    });
-
-    return () => {
-      if (unlistenFn) unlistenFn();
-    };
-  }, []);
-
-  // Tự động nhận diện và đọc thông số các file hình ảnh khi danh sách file thay đổi
-  useEffect(() => {
-    const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'bmp']);
-    const imagePaths = files.filter((f) => {
-      const ext = f.split('.').pop()?.toLowerCase();
-      return ext && imageExts.has(ext);
-    });
-
-    if (imagePaths.length > 0) {
       setIsInspectingImages(true);
-      invoke<ImageItem[]>('inspect_image_files', { files: imagePaths })
-        .then((items) => {
-          setImageItems(items);
-          setSelectedImagePaths(new Set(items.filter((i) => i.is_valid).map((i) => i.path)));
-        })
-        .catch((err) => {
-          console.error('Lỗi kiểm tra ảnh:', err);
-        })
-        .finally(() => {
-          setIsInspectingImages(false);
-        });
+      try {
+        const inspected = await invoke<ImageItem[]>('inspect_image_files', { files: filtered });
+        setImageItems(inspected);
+        setSelectedImagePaths(new Set(inspected.filter((i) => i.is_valid).map((i) => i.path)));
+      } catch (e) {
+        console.error('Lỗi kiểm tra ảnh:', e);
+      } finally {
+        setIsInspectingImages(false);
+      }
+    };
+
+    if (files.length > 0) {
+      inspectImages();
     } else {
       setImageItems([]);
       setSelectedImagePaths(new Set());
     }
   }, [files]);
 
-  const handleCancelScan = async () => {
-    try {
-      await invoke('cancel_scan');
-      setMessage({ text: 'Đang gửi yêu cầu dừng quét...', type: 'info' });
-    } catch (err: unknown) {
-      console.error('Lỗi hủy quét:', err);
-    }
-  };
-
-  const handleSelectFiles = async () => {
-    try {
-      const selected = await invoke<string[]>('select_files');
-      if (selected && selected.length > 0) {
-        // Xóa sạch danh sách đang có ngay lập tức khi chọn file mới
-        setFiles([]);
-        setPreviewItems([]);
-        setSearchQuery('');
-        setStatusFilter('all');
-        setIsRenamed(false);
-        setCurrentFolderPath(''); // Chuyển sang chế độ chọn tệp tin riêng lẻ
-        setLoading(true);
-        setFiles(selected);
-        setMessage({ text: `Đã nạp ${selected.length.toLocaleString()} tệp tin`, type: 'info' });
-      }
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setMessage({ text: `Không thể mở dialog: ${errMsg}`, type: 'error' });
-    }
-  };
-
-  const performScan = async (
-    targetFolder: string,
-    rec: boolean,
-    hid: boolean,
-    fld: boolean
-  ) => {
-    if (!targetFolder) return;
-    try {
-      // Xóa danh sách cũ ngay lập tức và đưa vào trạng thái loading
-      setFiles([]);
-      setPreviewItems([]);
-      setIsScanning(true);
-      setScanProgress({ count: 0, currentDir: targetFolder, dirCount: 0, skippedCount: 0, lastSkipped: '' });
-      setLoading(true);
-      const scanned = await invoke<string[]>('scan_selected_directory', {
-        folderPath: targetFolder,
-        recursive: rec,
-        includeHidden: hid,
-        includeFolders: fld,
+  // Lắng nghe sự kiện tiến độ quét & nén ảnh từ backend
+  useEffect(() => {
+    let unlistenResize: (() => void) | undefined;
+    const setupListener = async () => {
+      unlistenResize = await listen<ResizeProgressPayload>('image-resize-progress', (event) => {
+        setResizeProgress(event.payload);
       });
-      if (scanned && scanned.length > 0) {
-        setIsRenamed(false);
-        setFiles(scanned);
+    };
+    setupListener();
+    return () => {
+      if (unlistenResize) unlistenResize();
+    };
+  }, []);
+
+  // Chọn thư mục để quét
+  const handleScanFolder = async () => {
+    try {
+      const selected = await invoke<string | null>('select_folder');
+      if (!selected) return;
+
+      setCurrentFolderPath(selected);
+      setLoading(true);
+      setIsRenamed(false);
+      setMessage(null);
+
+      const scanned = await invoke<string[]>('scan_selected_directory', {
+        folderPath: selected,
+        recursive: recursiveScan,
+        includeHidden,
+        includeFolders,
+      });
+
+      setFiles(scanned);
+      await computePreview(scanned);
+
+      if (scanned.length > 0) {
         setMessage({
-          text: `Đã quét được ${scanned.length.toLocaleString()} mục (${rec ? 'Bao gồm thư mục con' : 'Chỉ thư mục hiện tại'}${
-            fld ? ', gồm đổi tên folder thư mục' : ''
-          }${hid ? ', gồm file ẩn' : ''})`,
-          type: 'info',
+          text: `Đã nạp thành công ${scanned.length.toLocaleString()} mục từ: ${selected}`,
+          type: 'success',
         });
       } else {
-        setFiles([]);
-        setPreviewItems([]);
-        setMessage({ text: 'Thư mục trống hoặc không chứa file phù hợp', type: 'info' });
+        setMessage({ text: 'Thư mục trống hoặc không chứa file phù hợp.', type: 'info' });
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setMessage({ text: `Lỗi quét thư mục: ${errMsg}`, type: 'error' });
     } finally {
-      setIsScanning(false);
       setLoading(false);
     }
   };
 
-  const handleScanFolder = async () => {
+  // Chọn các file riêng lẻ
+  const handleSelectFiles = async () => {
     try {
-      const picked = await invoke<string | null>('select_folder');
-      if (picked) {
-        // Xóa sạch danh sách đang có ngay lập tức khi chọn thư mục khác
-        setFiles([]);
-        setPreviewItems([]);
-        setSearchQuery('');
-        setStatusFilter('all');
-        setCurrentFolderPath(picked);
-        await performScan(picked, recursiveScan, includeHidden, includeFolders);
-      }
+      const selected = await invoke<string[] | null>('select_files');
+      if (!selected || selected.length === 0) return;
+
+      setCurrentFolderPath('');
+      setIsRenamed(false);
+      setFiles(selected);
+      await computePreview(selected);
+
+      setMessage({
+        text: `Đã nạp thành công ${selected.length.toLocaleString()} tệp tin`,
+        type: 'success',
+      });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      setMessage({ text: `Không thể mở hộp thoại chọn thư mục: ${errMsg}`, type: 'error' });
+      setMessage({ text: `Lỗi chọn file: ${errMsg}`, type: 'error' });
     }
   };
 
-  const handleOptionToggle = (key: 'recursive' | 'hidden' | 'folders', value: boolean) => {
-    const newRecursive = key === 'recursive' ? value : recursiveScan;
-    const newHidden = key === 'hidden' ? value : includeHidden;
-    const newFolders = key === 'folders' ? value : includeFolders;
+  // Thay đổi tùy chọn quét (tự động quét lại nếu đang chọn thư mục)
+  const handleOptionToggle = async (key: 'recursive' | 'hidden' | 'folders', val: boolean) => {
+    let newRec = recursiveScan;
+    let newHid = includeHidden;
+    let newFol = includeFolders;
 
-    if (key === 'recursive') setRecursiveScan(value);
-    if (key === 'hidden') setIncludeHidden(value);
-    if (key === 'folders') setIncludeFolders(value);
+    if (key === 'recursive') {
+      newRec = val;
+      setRecursiveScan(val);
+    } else if (key === 'hidden') {
+      newHid = val;
+      setIncludeHidden(val);
+    } else if (key === 'folders') {
+      newFol = val;
+      setIncludeFolders(val);
+    }
 
-    // Tự động quét lại ngay lập tức nếu đang có thư mục được chọn
     if (currentFolderPath) {
-      setFiles([]);
-      setPreviewItems([]);
-      performScan(currentFolderPath, newRecursive, newHidden, newFolders);
+      setLoading(true);
+      try {
+        const scanned = await invoke<string[]>('scan_selected_directory', {
+          folderPath: currentFolderPath,
+          recursive: newRec,
+          includeHidden: newHid,
+          includeFolders: newFol,
+        });
+        setFiles(scanned);
+        await computePreview(scanned);
+      } catch (e) {
+        console.error('Lỗi quét lại:', e);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
+  // Bắt đầu đổi tên chính thức (Commit)
   const handleApply = async () => {
     if (previewItems.length === 0 || isRenamed) return;
 
     try {
       setLoading(true);
-      const updatedItems = await invoke<FileItem[]>('apply_renaming', {
-        items: previewItems,
-      });
+      const applied = await invoke<FileItem[]>('apply_renaming', { items: previewItems });
+      const normalized = applied.map((item) => ({
+        ...item,
+        path_length: item.full_path_len || item.path.length,
+        is_collision: item.status === 'collision_resolved',
+      }));
 
-      const renamedCount = updatedItems.filter((it) => it.status === 'renamed').length;
-      const unchangedCount = updatedItems.filter((it) => it.status === 'unchanged').length;
+      setPreviewItems(normalized);
+      setIsRenamed(true);
 
-      let msg = `Đổi tên thành công ${renamedCount} tệp tin trên ổ cứng!`;
-      if (unchangedCount > 0) {
-        msg += ` (${unchangedCount} tệp tên không đổi nên được giữ nguyên)`;
-      }
-
+      const count = normalized.filter((i) => i.status === 'renamed' || i.status === 'collision_resolved').length;
       setMessage({
-        text: msg,
+        text: `🎉 Đã đổi tên thành công ${count.toLocaleString()} tệp tin trên ổ cứng!`,
         type: 'success',
       });
-
-      // Cập nhật danh sách items đã được backend phân loại chuẩn xác trạng thái (renamed / unchanged)
-      setPreviewItems(updatedItems);
-
-      // Đánh dấu đã đổi tên thành công để không bị useEffect trigger preview đè mất tên gốc
-      setIsRenamed(true);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      setMessage({ text: `Lỗi áp dụng: ${errMsg}`, type: 'error' });
+      setMessage({ text: `Lỗi đổi tên: ${errMsg}`, type: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
+  // Hoàn tác (Undo / Rollback)
   const handleRollback = async () => {
     try {
       setLoading(true);
-      const revertedCount = await invoke<number>('rollback_renaming');
-      setMessage({
-        text: `Đã hoàn tác (Rollback) thành công ${revertedCount} tệp tin về tên ban đầu!`,
-        type: 'success',
-      });
+      const count = await invoke<number>('rollback_renaming');
+      setMessage({ text: `↩ Đã hoàn tác (Rollback) thành công ${count} tệp tin!`, type: 'info' });
 
-      // Phục hồi lại đường dẫn và trạng thái ban đầu
       setPreviewItems((prev) =>
         prev.map((item) => {
           const lastSlash = Math.max(item.path.lastIndexOf('/'), item.path.lastIndexOf('\\'));
@@ -554,12 +580,13 @@ export default function App() {
     }
   };
 
+  // Xuất CSV báo cáo
   const handleExportCsv = async () => {
     if (previewItems.length === 0) return;
     try {
       setLoading(true);
       await invoke('export_to_csv', { exportPath: '', data: previewItems });
-      setMessage({ text: 'Xuất danh sách ra file CSV thành công!', type: 'success' });
+      setMessage({ text: 'Đã xuất danh sách báo cáo ra file CSV thành công!', type: 'success' });
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setMessage({ text: `Lỗi xuất CSV: ${errMsg}`, type: 'error' });
@@ -568,6 +595,7 @@ export default function App() {
     }
   };
 
+  // Mở thư mục chứa file trong Windows Explorer
   const handleOpenFolder = async (path: string) => {
     try {
       await invoke('open_folder_in_os', { folderPath: path });
@@ -577,6 +605,7 @@ export default function App() {
     }
   };
 
+  // Xóa trắng danh sách
   const handleClear = () => {
     setFiles([]);
     setPreviewItems([]);
@@ -588,7 +617,18 @@ export default function App() {
     setIsRenamed(false);
   };
 
-  // Xử lý chọn nhanh ảnh
+  // Tự động kích hoạt chế độ co gọn đường dẫn MAX_PATH
+  const handleAutoTruncate = () => {
+    setActiveTab('clean');
+    updateRule('truncate_long_path', true);
+    updateRule('use_middle_ellipsis', true);
+    setMessage({
+      text: 'Đã bật chế độ Co Gọn Full Path An Toàn (Smart Truncate Middle-Ellipsis)!',
+      type: 'info',
+    });
+  };
+
+  // Các thao tác chọn nhanh ảnh trong Image Resizer
   const handleSelectAllImages = () => {
     setSelectedImagePaths(new Set(imageItems.filter((i) => i.is_valid).map((i) => i.path)));
   };
@@ -598,25 +638,28 @@ export default function App() {
   };
 
   const handleSelectImagesOver2MB = () => {
-    const threshold = 2 * 1024 * 1024;
-    setSelectedImagePaths(new Set(imageItems.filter((i) => i.is_valid && i.file_size >= threshold).map((i) => i.path)));
+    const twoMb = 2 * 1024 * 1024;
+    setSelectedImagePaths(new Set(imageItems.filter((i) => i.is_valid && i.file_size > twoMb).map((i) => i.path)));
   };
 
   const handleSelectImagesOver1920 = () => {
-    setSelectedImagePaths(new Set(imageItems.filter((i) => i.is_valid && (i.width > 1920 || i.height > 1080)).map((i) => i.path)));
+    setSelectedImagePaths(
+      new Set(imageItems.filter((i) => i.is_valid && (i.width > 1920 || i.height > 1920)).map((i) => i.path))
+    );
   };
 
   const handleSelectOverTarget = () => {
-    const targetW = resizeConfig.max_width;
-    const targetH = resizeConfig.max_height;
+    const maxW = resizeConfig.max_width;
+    const maxH = resizeConfig.max_height;
     setSelectedImagePaths(
       new Set(
         imageItems
-          .filter(
-            (i) =>
-              i.is_valid &&
-              ((targetW > 0 && i.width > targetW) || (targetH > 0 && i.height > targetH))
-          )
+          .filter((i) => {
+            if (!i.is_valid) return false;
+            const wSmaller = maxW === 0 || i.width <= maxW;
+            const hSmaller = maxH === 0 || i.height <= maxH;
+            return !(wSmaller && hSmaller);
+          })
           .map((i) => i.path)
       )
     );
@@ -625,21 +668,17 @@ export default function App() {
   const handleToggleSelectImage = (path: string) => {
     setSelectedImagePaths((prev) => {
       const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
       return next;
     });
   };
 
-  // Thực thi giảm kích thước và ghi đè
+  // Thực thi nén và ghi đè ảnh
   const handleExecuteResize = async () => {
-    if (selectedImagePaths.size === 0) return;
     setShowConfirmModal(false);
     setIsResizing(true);
-    setResizeProgress({ current: 0, total: selectedImagePaths.size, current_file: 'Đang bắt đầu...', percent: 0 });
+    setResizeProgress({ current: 0, total: selectedImagePaths.size, current_file: 'Đang chuẩn bị...', percent: 0 });
 
     try {
       const targetPaths = Array.from(selectedImagePaths);
@@ -665,7 +704,6 @@ export default function App() {
         type: 'success',
       });
 
-      // Làm mới lại danh sách ảnh trên ổ cứng
       const updated = await invoke<ImageItem[]>('inspect_image_files', { files: targetPaths });
       setImageItems((prev) => {
         const map = new Map(updated.map((u) => [u.path, u]));
@@ -680,13 +718,13 @@ export default function App() {
     }
   };
 
-  // Lọc danh sách xem trước theo từ khóa tìm kiếm và trạng thái
+  // Lọc bảng theo từ khóa tìm kiếm & trạng thái
   const filteredItems = useMemo(() => {
     return previewItems.filter((item) => {
       if (statusFilter === 'renamed' && item.status !== 'renamed') return false;
       if (statusFilter === 'unchanged' && item.status !== 'unchanged') return false;
       if (statusFilter === 'collision' && item.status !== 'collision_resolved') return false;
-      if ((statusFilter as string) === 'long_path' && !item.is_long_path) return false;
+      if (statusFilter === 'long_path' && !item.is_long_path) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -700,67 +738,70 @@ export default function App() {
     });
   }, [previewItems, searchQuery, statusFilter]);
 
-  // Đếm số lượng tệp tin có Full Path vượt quá ngưỡng an toàn 250 ký tự
   const longPathCount = useMemo(() => {
     return previewItems.filter((i) => i.is_long_path).length;
   }, [previewItems]);
-
-  // Giới hạn số dòng render vào HTML DOM để đảm bảo mượt mà 60 FPS khi danh sách lớn (>10,000 tệp)
-  const [displayLimit, setDisplayLimit] = useState(500);
-  const [isExpanding, setIsExpanding] = useState(false);
-
-  useEffect(() => {
-    setDisplayLimit(500);
-  }, [searchQuery, statusFilter, previewItems.length]);
-
-  const handleExpandDisplay = (targetLimit: number) => {
-    setIsExpanding(true);
-    // Nhường quyền cho browser hiển thị overlay loading trước khi React mount hàng chục nghìn thẻ DOM
-    setTimeout(() => {
-      setDisplayLimit(targetLimit);
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          setIsExpanding(false);
-        }, 60);
-      });
-    }, 50);
-  };
 
   const visibleItems = useMemo(() => {
     return filteredItems.slice(0, displayLimit);
   }, [filteredItems, displayLimit]);
 
+  const handleExpandDisplay = (targetLimit: number) => {
+    setIsExpanding(true);
+    setTimeout(() => {
+      setDisplayLimit(targetLimit);
+      requestAnimationFrame(() => {
+        setTimeout(() => setIsExpanding(false), 50);
+      });
+    }, 50);
+  };
+
+  // ==========================================
+  // 4. GIAO DIỆN CHÍNH (JSX LAYOUT)
+  // ==========================================
+
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-950 font-sans text-slate-100">
-      {/* Top Header */}
-      <header className="flex min-h-16 shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/95 px-6 py-2.5 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <img
-            src="/icon.png"
-            alt="Rename File Viet Logo"
-            className="h-10 w-10 rounded-xl shadow-md shadow-indigo-500/25 object-cover border border-indigo-500/20"
-          />
+    <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 antialiased select-none">
+      {/* ========================================================================= */}
+      {/* VÙNG 1: THANH ĐIỀU HƯỚNG TRÊN CÙNG (TOP NAVIGATION BAR - macOS / Win 11)   */}
+      {/* ========================================================================= */}
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-6 backdrop-blur-md shadow-xs z-20">
+        {/* Brand Logo & Version */}
+        <div
+          onClick={() => setShowAboutModal(true)}
+          className="flex items-center gap-3 cursor-pointer group"
+          title="Bấm để xem giới thiệu & cập nhật phần mềm"
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-500/20 group-hover:scale-105 transition-all duration-200">
+            <span className="text-xl">⚡</span>
+          </div>
           <div>
-            <h1 className="text-base font-bold tracking-tight text-white">Rename File Viet</h1>
-            <p className="text-xs text-slate-400">Tiện ích đổi tên tệp tiếng Việt &amp; xử lý hàng loạt (Tauri v2 + Rust)</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-200">
+                Rename File Viet
+              </h1>
+              <span className="rounded-full bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60 font-mono">
+                v1.0.0
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Tiện ích đổi tên tệp tiếng Việt &amp; nén ảnh hàng loạt</p>
           </div>
         </div>
 
-        {/* Chuyển đổi chế độ: Đổi Tên File vs Giảm Kích Thước Ảnh */}
-        <div className="flex items-center rounded-xl bg-slate-950/90 p-1 border border-slate-800 shadow-inner">
+        {/* Chuyển Đổi Chế Độ (Mode Switcher Pills) */}
+        <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200/80 dark:border-slate-700/80 shadow-inner">
           <button
             type="button"
             onClick={() => setMainMode('renamer')}
-            className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-              mainMode === 'renamer'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-900/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer ${mainMode === 'renamer'
+                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
           >
             <FileText className="h-3.5 w-3.5" />
             <span>🏷️ Đổi Tên Tệp</span>
             {previewItems.length > 0 && (
-              <span className="rounded-full bg-slate-800/80 px-2 py-0.5 text-[10px] text-slate-300 font-mono">
+              <span className="rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-mono font-bold">
                 {previewItems.length.toLocaleString()}
               </span>
             )}
@@ -769,112 +810,84 @@ export default function App() {
           <button
             type="button"
             onClick={() => setMainMode('resizer')}
-            className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer ${
-              mainMode === 'resizer'
-                ? 'bg-rose-600 text-white shadow-md shadow-rose-900/30'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
+            className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer ${mainMode === 'resizer'
+                ? 'bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
           >
             <ImageIcon className="h-3.5 w-3.5" />
             <span>🖼️ Giảm Kích Thước Ảnh</span>
             {imageItems.length > 0 && (
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-bold font-mono ${
-                  mainMode === 'resizer'
-                    ? 'bg-rose-950 text-rose-200 border border-rose-800/60'
-                    : 'bg-slate-800 text-rose-400'
-                }`}
-              >
+              <span className="rounded-full bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[10px] font-mono font-bold">
                 {imageItems.length.toLocaleString()} ảnh
               </span>
             )}
           </button>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Nút Quét Thư Mục (Vàng Cam Amber - đặc trưng Thư mục) */}
+        {/* Nút Điều Khiển: Chế độ Sáng/Tối & Giới Thiệu / Cập Nhật GitHub */}
+        <div className="flex items-center gap-2">
+          {/* Nút chuyển đổi giao diện Sáng / Tối / Hệ điều hành */}
           <button
-            onClick={handleScanFolder}
-            className="flex items-center gap-2 rounded-lg bg-amber-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-amber-900/30 transition hover:bg-amber-500 active:scale-95 cursor-pointer"
-            title="Quét toàn bộ tệp tin trong thư mục"
+            onClick={toggleTheme}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/90 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/80 active:scale-95 cursor-pointer"
+            title={
+              themeMode === 'system'
+                ? 'Chế độ hiện tại: Theo Hệ Điều Hành (Bấm để chuyển sang Tối)'
+                : themeMode === 'dark'
+                  ? 'Chế độ hiện tại: Tối (Bấm để chuyển sang Sáng)'
+                  : 'Chế độ hiện tại: Sáng (Bấm để chuyển sang Theo Hệ Điều Hành)'
+            }
           >
-            <FolderOpen className="h-4 w-4" />
-            Quét Thư Mục
-          </button>
-
-          {/* Nút Chọn Files (Xanh Tím Indigo - đặc trưng Tệp tin) */}
-          <button
-            onClick={handleSelectFiles}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-900/30 transition hover:bg-indigo-500 active:scale-95 cursor-pointer"
-            title="Chọn một hoặc nhiều tệp tin riêng lẻ"
-          >
-            <FileText className="h-4 w-4" />
-            Chọn Files
-          </button>
-
-          <button
-            onClick={handleApply}
-            disabled={files.length === 0 || loading || isRenamed}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white shadow-md transition active:scale-95 ${
-              isRenamed
-                ? 'bg-slate-700 opacity-60 cursor-not-allowed'
-                : 'bg-emerald-600 hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40'
-            }`}
-          >
-            <Play className="h-4 w-4" />
-            {isRenamed ? 'Đã Đổi Tên Xong' : 'Đổi Tên'}
+            {themeMode === 'system' ? (
+              <>
+                <Monitor className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+                <span className="hidden sm:inline">Theo HĐH</span>
+              </>
+            ) : themeMode === 'dark' ? (
+              <>
+                <Moon className="h-3.5 w-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Tối</span>
+              </>
+            ) : (
+              <>
+                <Sun className="h-3.5 w-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Sáng</span>
+              </>
+            )}
           </button>
 
           <button
-            onClick={handleRollback}
-            className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700 active:scale-95"
-            title="Hoàn tác (Undo) phiên đổi tên trước"
+            onClick={() => setShowAboutModal(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/90 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/80 active:scale-95 cursor-pointer"
+            title="Xem giới thiệu phần mềm & tải bản cập nhật mới nhất từ GitHub"
           >
-            <RotateCcw className="h-4 w-4" />
-            Undo
+            <Sparkles className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+            <span className="hidden sm:inline">Giới Thiệu &amp; Cập Nhật</span>
           </button>
-
-          {previewItems.length > 0 && (
-            <button
-              onClick={handleExportCsv}
-              className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-700 active:scale-95"
-              title="Xuất danh sách ra file CSV / Excel"
-            >
-              <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
-              CSV
-            </button>
-          )}
-
-          {files.length > 0 && (
-            <button
-              onClick={handleClear}
-              className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-red-400"
-              title="Xóa danh sách"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
         </div>
       </header>
 
-      {/* Thanh trạng thái thư mục đã chọn & Các tùy chọn quét */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/70 px-6 py-2 text-xs">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <FolderOpen className="h-4 w-4 shrink-0 text-indigo-400" />
-          <span className="shrink-0 font-medium text-slate-400">Thư mục hiện tại:</span>
+      {/* ========================================================================= */}
+      {/* VÙNG 2: THANH THAO TÁC & THÔNG TIN THƯ MỤC (SUB-HEADER)                  */}
+      {/* ========================================================================= */}
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 text-xs text-slate-600 dark:text-slate-400 shadow-2xs z-10">
+        {/* Bên trái: Thông tin Thư mục hiện tại */}
+        <div className="flex items-center gap-2 min-w-0 flex-1 mr-4">
+          <FolderOpen className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
+          <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">Thư mục:</span>
           {currentFolderPath ? (
-            <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <span
-                className="truncate font-mono text-indigo-300 bg-slate-800/80 px-2.5 py-0.5 rounded border border-slate-700/60 max-w-xs sm:max-w-md md:max-w-lg lg:max-w-xl"
+                className="truncate font-mono text-indigo-700 dark:text-indigo-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs max-w-xs sm:max-w-md md:max-w-xl font-medium"
                 title={currentFolderPath}
               >
                 {currentFolderPath}
               </span>
               <button
-                onClick={() => invoke('open_folder_in_os', { folderPath: currentFolderPath })}
-                className="shrink-0 p-1 text-slate-400 hover:text-indigo-300 hover:bg-slate-800 rounded transition"
-                title="Mở thư mục này trong Windows Explorer"
+                onClick={() => handleOpenFolder(currentFolderPath)}
+                className="shrink-0 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors p-1"
+                title="Mở thư mục trong Windows Explorer"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
               </button>
@@ -884,913 +897,961 @@ export default function App() {
                   setFiles([]);
                   setPreviewItems([]);
                 }}
-                className="shrink-0 text-[11px] text-slate-400 hover:text-red-400 underline ml-1"
+                className="shrink-0 text-[11px] text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 transition-colors underline ml-1 cursor-pointer"
                 title="Bỏ chọn thư mục"
               >
                 Đóng
               </button>
             </div>
           ) : (
-            <span className="italic text-slate-500 truncate">
+            <span className="italic text-slate-400 dark:text-slate-500 truncate">
               {files.length > 0
-                ? `(Đang chọn ${files.length} tệp tin rời rạc)`
-                : 'Chưa chọn thư mục (Bấm "Quét Thư Mục" hoặc "Chọn Files")'}
+                ? `(Đang chọn ${files.length.toLocaleString()} tệp tin riêng lẻ)`
+                : 'Chưa chọn thư mục (Chọn hoặc kéo thả vào khung bên dưới)'}
             </span>
           )}
         </div>
-      </div>
 
-      {/* Main Workspace */}
-      {mainMode === 'renamer' ? (
-        <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar: Rules Configuration (Tabbed Workflow như Advanced Renamer & BRU) */}
-        <aside className="w-88 shrink-0 border-r border-slate-800 bg-slate-900/60 flex flex-col">
-          {/* Card: Phạm Vi Quét & Đối Tượng (Trực quan, dễ hiểu, chuyên nghiệp) */}
-          <div className="border-b border-slate-800 bg-slate-900/80 p-3.5 space-y-2.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-300">
-              <span className="text-indigo-400">⚙️</span>
-              <span>PHẠM VI QUÉT &amp; ĐỐI TƯỢNG</span>
-            </div>
-
-            <div className="space-y-2 text-xs">
-              {/* Option 1: Recursive */}
-              <label className="flex items-start gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={recursiveScan}
-                  onChange={(e) => handleOptionToggle('recursive', e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 mt-0.5 cursor-pointer"
-                />
-                <div className="leading-tight">
-                  <span className="font-semibold text-slate-200 group-hover:text-white transition">Quét sâu vào thư mục con</span>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Duyệt đệ quy tất cả tệp tin trong các cấp folder bên trong</p>
-                </div>
-              </label>
-
-              {/* Option 2: Hidden Files */}
-              <label className="flex items-start gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeHidden}
-                  onChange={(e) => handleOptionToggle('hidden', e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 mt-0.5 cursor-pointer"
-                />
-                <div className="leading-tight">
-                  <span className="font-semibold text-slate-200 group-hover:text-white transition">Bao gồm cả tệp &amp; thư mục ẩn</span>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Không bỏ sót các tệp tin hệ thống hoặc file bị ẩn</p>
-                </div>
-              </label>
-
-              {/* Option 3: Folders */}
-              <label className="flex items-start gap-2.5 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={includeFolders}
-                  onChange={(e) => handleOptionToggle('folders', e.target.checked)}
-                  className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-950 text-indigo-600 focus:ring-0 mt-0.5 cursor-pointer"
-                />
-                <div className="leading-tight">
-                  <span className="font-semibold text-slate-200 group-hover:text-white transition">Đổi tên cả thư mục (Folder)</span>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Áp dụng đổi tên cho cả folder, không chỉ riêng file</p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Tab Selection Headers */}
-          <div className="grid grid-cols-4 border-b border-slate-800 bg-slate-900/80 p-1.5 gap-1 text-[11px] font-semibold text-slate-400">
+        {/* Bên phải: Nhóm Nút Thao Tác Chính (Bắt Đầu Đổi Tên, Hoàn Tác, CSV, Xóa danh sách) */}
+        {mainMode === 'renamer' && (
+          <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={() => setActiveTab('clean')}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg transition ${
-                activeTab === 'clean'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'hover:bg-slate-800 hover:text-slate-200'
+              onClick={handleApply}
+              disabled={files.length === 0 || loading || isRenamed}
+              className={`flex items-center gap-2 rounded-xl px-4 py-1.5 text-xs font-bold text-white shadow-sm transition-all duration-200 active:scale-95 cursor-pointer ${
+                isRenamed
+                  ? 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-70'
+                  : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-indigo-600/20 disabled:opacity-40 disabled:cursor-not-allowed'
               }`}
-              title="Chuẩn hóa ký tự, dấu tiếng Việt, khoảng trắng"
             >
-              <Sparkles className="h-4 w-4 mb-0.5" />
-              <span>Chuẩn Hóa</span>
+              <Play className="h-3.5 w-3.5 fill-white" />
+              <span>{isRenamed ? '✔ Đã Đổi Tên Xong' : 'Bắt Đầu Đổi Tên'}</span>
             </button>
+
             <button
-              onClick={() => setActiveTab('find_replace')}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg transition ${
-                activeTab === 'find_replace'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'hover:bg-slate-800 hover:text-slate-200'
-              }`}
-              title="Tìm và thay thế chuỗi / biểu thức chính quy (Regex)"
+              onClick={handleRollback}
+              disabled={loading}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Hoàn tác (Undo) phiên đổi tên trước"
             >
-              <Replace className="h-4 w-4 mb-0.5" />
-              <span>Tìm & Thay</span>
+              <RotateCcw className="h-3.5 w-3.5 text-amber-500" />
+              <span>Hoàn Tác</span>
             </button>
-            <button
-              onClick={() => setActiveTab('numbering')}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg transition ${
-                activeTab === 'numbering'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'hover:bg-slate-800 hover:text-slate-200'
-              }`}
-              title="Chèn tiền tố, hậu tố và đánh số thứ tự (001, 002...)"
-            >
-              <Hash className="h-4 w-4 mb-0.5" />
-              <span>Đánh Số</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('case')}
-              className={`flex flex-col items-center py-2 px-1 rounded-lg transition ${
-                activeTab === 'case'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'hover:bg-slate-800 hover:text-slate-200'
-              }`}
-              title="Đổi chữ hoa/thường và thay đổi đuôi mở rộng"
-            >
-              <Type className="h-4 w-4 mb-0.5" />
-              <span>Chữ & Đuôi</span>
-            </button>
-          </div>
 
-          {/* Tab Content Panel */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* TAB 1: CHUẨN HÓA & TIẾNG VIỆT */}
-            {activeTab === 'clean' && (
-              <>
-                {/* Vietnamese Clean */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 transition hover:border-slate-700">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={rules.remove_vietnamese}
-                      onChange={(e) => updateRules((r) => ({ ...r, remove_vietnamese: e.target.checked }))}
-                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div>
-                      <div className="text-sm font-semibold text-slate-200">Xóa Dấu Tiếng Việt</div>
-                      <div className="text-xs text-slate-400">Chuẩn hóa NFD/NFC, Đ/đ $\to$ D/d</div>
-                    </div>
-                  </label>
-                </div>
-
-                {/* SpaceRule */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 transition hover:border-slate-700">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={rules.space_rule}
-                      onChange={(e) => updateRules((r) => ({ ...r, space_rule: e.target.checked }))}
-                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-slate-200">Xử Lý Khoảng Trắng</div>
-                      <div className="text-xs text-slate-400">Tùy chọn xử lý khoảng cách</div>
-                      {rules.space_rule && (
-                        <div className="mt-2.5 space-y-1.5 pl-1">
-                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="space_action"
-                              checked={rules.space_action === 'collapse'}
-                              onChange={() => updateRules((r) => ({ ...r, space_action: 'collapse' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Dồn nhiều khoảng trắng $\to$ 1</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="space_action"
-                              checked={rules.space_action === 'trim'}
-                              onChange={() => updateRules((r) => ({ ...r, space_action: 'trim' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Cắt bỏ khoảng trắng 2 đầu</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="space_action"
-                              checked={rules.space_action === 'remove_all'}
-                              onChange={() => updateRules((r) => ({ ...r, space_action: 'remove_all' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Xóa tất cả khoảng trắng</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                </div>
-
-                {/* Sanitize OS */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 transition hover:border-slate-700">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={rules.sanitize}
-                      onChange={(e) => updateRules((r) => ({ ...r, sanitize: e.target.checked }))}
-                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-slate-200">Làm Sạch Ký Tự Cấm OS</div>
-                      <div className="text-xs text-slate-400">Loại bỏ \ / : * ? " &lt; &gt; |</div>
-                      {rules.sanitize && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs text-slate-400">Thay bằng:</span>
-                          <input
-                            type="text"
-                            value={rules.sanitize_replacement}
-                            onChange={(e) => updateRules((r) => ({ ...r, sanitize_replacement: e.target.value }))}
-                            className="w-14 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-center text-xs text-white focus:border-indigo-500 focus:outline-none"
-                            maxLength={2}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                </div>
-
-                {/* Web-safe Slug */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 transition hover:border-slate-700">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={rules.web_safe_slug}
-                      onChange={(e) => updateRules((r) => ({ ...r, web_safe_slug: e.target.checked }))}
-                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-slate-200">Chuẩn Hóa Web Slug</div>
-                      <div className="text-xs text-slate-400">Chữ thường, an toàn URL/Web</div>
-                      {rules.web_safe_slug && (
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => updateRules((r) => ({ ...r, slug_separator: '-' }))}
-                            className={`rounded px-2.5 py-1 text-xs font-mono font-medium ${
-                              rules.slug_separator === '-'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            Gạch ngang (-)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => updateRules((r) => ({ ...r, slug_separator: '_' }))}
-                            className={`rounded px-2.5 py-1 text-xs font-mono font-medium ${
-                              rules.slug_separator === '_'
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            Gạch dưới (_)
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                </div>
-
-                {/* Co gọn Full Path an toàn (Smart Path Budgeting & Truncation) */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 transition hover:border-slate-700">
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={rules.truncate_long_path}
-                      onChange={(e) => updateRules((r) => ({ ...r, truncate_long_path: e.target.checked }))}
-                      className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-200">
-                        <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-                        <span>Co Gọn Full Path An Toàn</span>
-                      </div>
-                      <div className="text-xs text-slate-400">Tự động cắt ngắn nếu đường dẫn &gt; 250 ký tự</div>
-                      {rules.truncate_long_path && (
-                        <div className="mt-2.5 space-y-2 pl-1 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-400">Giới hạn tối đa:</span>
-                            <input
-                              type="number"
-                              min="100"
-                              max="260"
-                              value={rules.max_path_length}
-                              onChange={(e) => updateRules((r) => ({ ...r, max_path_length: parseInt(e.target.value) || 250 }))}
-                              className="w-16 rounded border border-slate-700 bg-slate-950 px-2 py-0.5 text-center text-white focus:border-indigo-500 focus:outline-none"
-                            />
-                            <span className="text-slate-500">ký tự (Windows MAX 260)</span>
-                          </div>
-                          <div className="space-y-1">
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                              <input
-                                type="radio"
-                                name="trunc_strat"
-                                checked={rules.use_middle_ellipsis}
-                                onChange={() => updateRules((r) => ({ ...r, use_middle_ellipsis: true }))}
-                                className="text-indigo-600"
-                              />
-                              <span>Cắt giữa: Đầu...Đuôi (Bảo toàn Version/ID)</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer text-slate-300">
-                              <input
-                                type="radio"
-                                name="trunc_strat"
-                                checked={!rules.use_middle_ellipsis}
-                                onChange={() => updateRules((r) => ({ ...r, use_middle_ellipsis: false }))}
-                                className="text-indigo-600"
-                              />
-                              <span>Cắt đuôi: Đầu... (Giữ tên đầu)</span>
-                            </label>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </label>
-                </div>
-              </>
+            {previewItems.length > 0 && (
+              <button
+                onClick={handleExportCsv}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-emerald-600 dark:hover:text-emerald-400 active:scale-95 cursor-pointer"
+                title="Xuất báo cáo đổi tên ra CSV"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" />
+                <span>CSV</span>
+              </button>
             )}
 
-            {/* TAB 2: TÌM KIẾM VÀ THAY THẾ (Find & Replace - Chuẩn PowerRename / BRU) */}
-            {activeTab === 'find_replace' && (
-              <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700 space-y-3">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={rules.find_replace}
-                    onChange={(e) => updateRules((r) => ({ ...r, find_replace: e.target.checked }))}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <span className="text-sm font-semibold text-slate-200">Kích Hoạt Tìm & Thay Thế</span>
-                </label>
+            {files.length > 0 && (
+              <button
+                onClick={handleClear}
+                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1.5 text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:border-rose-800 transition-all duration-200 cursor-pointer shadow-2xs"
+                title="Xóa danh sách"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
-                {rules.find_replace && (
-                  <div className="space-y-3 pt-2">
+      {/* ========================================================================= */}
+      {/* VÙNG 3: KHÔNG GIAN LÀM VIỆC CHÍNH (MAIN WORKSPACE: SIDEBAR + CONTENT)      */}
+      {/* ========================================================================= */}
+      {mainMode === 'renamer' ? (
+        <div className="flex flex-1 overflow-hidden">
+          {/* --------------------------------------------------------------------- */}
+          {/* CỘT BÊN TRÁI: SIDEBAR (QUẢN LÝ QUY TẮC & CÀI ĐẶT)                    */}
+          {/* --------------------------------------------------------------------- */}
+          <aside className="w-80 sm:w-88 shrink-0 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between overflow-hidden shadow-xs">
+            {/* Phía trên Sidebar: Danh sách Quy Tắc (Cards) */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Header Sidebar & Tab Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Quy Tắc Đổi Tên</span>
+                  <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full border border-indigo-200/50 dark:border-indigo-800/50">
+                    Đa luồng Rayon
+                  </span>
+                </div>
+
+                {/* Tab Buttons Pills */}
+                <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200/70 dark:border-slate-700/80">
+                  <button
+                    onClick={() => setActiveTab('clean')}
+                    className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'clean'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5 mb-1" />
+                    <span>Chuẩn Hóa</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('find_replace')}
+                    className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'find_replace'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                  >
+                    <Replace className="h-3.5 w-3.5 mb-1" />
+                    <span>Tìm &amp; Thay</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('numbering')}
+                    className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'numbering'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                  >
+                    <Hash className="h-3.5 w-3.5 mb-1" />
+                    <span>Đánh Số</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('case')}
+                    className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'case'
+                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      }`}
+                  >
+                    <Type className="h-3.5 w-3.5 mb-1" />
+                    <span>Chữ &amp; Đuôi</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* TAB 1: CHUẨN HÓA & TIẾNG VIỆT */}
+              {activeTab === 'clean' && (
+                <div className="space-y-3 animate-in fade-in duration-200">
+                  {/* Card 1: Xóa Dấu Tiếng Việt */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.remove_diacritics}
+                        onChange={(e) => updateRule('remove_diacritics', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Xóa Dấu Tiếng Việt</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Chuyển tiếng Việt có dấu sang không dấu chuẩn Unicode (NFD/NFC, Đ/đ → D/d)
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Card 2: Xử Lý Khoảng Trắng */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.clean_space}
+                        onChange={(e) => updateRule('clean_space', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Xử Lý Khoảng Trắng</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Loại bỏ dấu cách thừa ở đầu, cuối và giữa tên</p>
+                      </div>
+                    </label>
+
+                    {rules.clean_space && (
+                      <div className="pl-6 space-y-1 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="space_action"
+                            checked={rules.space_action === 'collapse'}
+                            onChange={() => updateRule('space_action', 'collapse')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Dồn nhiều khoảng trắng liên tiếp → 1</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="space_action"
+                            checked={rules.space_action === 'trim'}
+                            onChange={() => updateRule('space_action', 'trim')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Chỉ cắt bỏ khoảng trắng ở 2 đầu</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="space_action"
+                            checked={rules.space_action === 'remove_all'}
+                            onChange={() => updateRule('space_action', 'remove_all')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Xóa tất cả khoảng trắng trong tên</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 3: Làm Sạch Ký Tự Cấm OS */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.sanitize}
+                        onChange={(e) => updateRule('sanitize', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Làm Sạch Ký Tự Cấm OS</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Tự động thay thế các ký tự cấm: \ / : * ? &quot; &lt; &gt; |
+                        </p>
+                      </div>
+                    </label>
+
+                    {rules.sanitize && (
+                      <div className="pl-6 pt-1 flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Thay thế bằng:</span>
+                        <input
+                          type="text"
+                          value={rules.sanitize_replacement}
+                          onChange={(e) => updateRule('sanitize_replacement', e.target.value)}
+                          maxLength={2}
+                          className="w-12 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 4: Web-safe Slug */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.web_safe_slug}
+                        onChange={(e) => updateRule('web_safe_slug', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Chuẩn Hóa Web Slug</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Chữ thường, chỉ gồm a-z, 0-9 và dấu gạch nối</p>
+                      </div>
+                    </label>
+
+                    {rules.web_safe_slug && (
+                      <div className="pl-6 pt-1 flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="slug_sep"
+                            checked={rules.slug_separator === '-'}
+                            onChange={() => updateRule('slug_separator', '-')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Gạch ngang (-)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="slug_sep"
+                            checked={rules.slug_separator === '_'}
+                            onChange={() => updateRule('slug_separator', '_')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Gạch dưới (_)</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Card 5: Co Gọn Full Path An Toàn (MAX_PATH) */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.truncate_long_path}
+                        onChange={(e) => updateRule('truncate_long_path', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Co Gọn Full Path (MAX_PATH)</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          Tự động cắt bớt tên file nếu đường dẫn dài vượt quá 250 ký tự
+                        </p>
+                      </div>
+                    </label>
+
+                    {rules.truncate_long_path && (
+                      <div className="pl-6 space-y-2 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400">Giới hạn tối đa:</span>
+                          <input
+                            type="number"
+                            value={rules.max_path_length}
+                            onChange={(e) => updateRule('max_path_length', parseInt(e.target.value) || 250)}
+                            className="w-16 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                          />
+                          <span className="text-[11px] text-slate-400">ký tự</span>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="trunc_mode"
+                              checked={rules.use_middle_ellipsis}
+                              onChange={() => updateRule('use_middle_ellipsis', true)}
+                              className="text-indigo-600 focus:ring-0 cursor-pointer"
+                            />
+                            <span>Cắt ở giữa giữ đầu &amp; đuôi (...)</span>
+                          </label>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="trunc_mode"
+                              checked={!rules.use_middle_ellipsis}
+                              onChange={() => updateRule('use_middle_ellipsis', false)}
+                              className="text-indigo-600 focus:ring-0 cursor-pointer"
+                            />
+                            <span>Cắt ở cuối tên file</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: TÌM KIẾM & THAY THẾ */}
+              {activeTab === 'find_replace' && (
+                <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-3 animate-in fade-in duration-200">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rules.find_replace}
+                      onChange={(e) => updateRule('find_replace', e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                    />
                     <div>
-                      <label className="block text-xs font-medium text-slate-400 mb-1">Tìm từ khóa (Find):</label>
+                      <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Bật Tìm &amp; Thay Thế</span>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Hỗ trợ từ khóa chính xác hoặc Regex nâng cao</p>
+                    </div>
+                  </label>
+
+                  <div className="space-y-2.5 pt-1 text-xs">
+                    <div>
+                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Tìm (Find):</label>
                       <input
                         type="text"
-                        placeholder="Chuỗi cần tìm hoặc mẫu Regex..."
                         value={rules.find_text}
-                        onChange={(e) => updateRules((r) => ({ ...r, find_text: e.target.value }))}
-                        className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none font-mono"
+                        onChange={(e) => updateRule('find_text', e.target.value)}
+                        placeholder="Từ khóa hoặc biểu thức Regex..."
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-400 mb-1">Thay thế bằng (Replace):</label>
+                      <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Thay bằng (Replace):</label>
                       <input
                         type="text"
-                        placeholder="Để trống nếu muốn xóa bỏ từ khóa..."
                         value={rules.replace_text}
-                        onChange={(e) => updateRules((r) => ({ ...r, replace_text: e.target.value }))}
-                        className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none font-mono"
+                        onChange={(e) => updateRule('replace_text', e.target.value)}
+                        placeholder="Chuỗi mới thay thế..."
+                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
 
-                    <div className="pt-1 flex flex-col gap-2 text-xs text-slate-300">
+                    <div className="space-y-1.5 pt-1 text-slate-600 dark:text-slate-300">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={rules.find_regex}
-                          onChange={(e) => updateRules((r) => ({ ...r, find_regex: e.target.checked }))}
-                          className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 text-indigo-600"
+                          onChange={(e) => updateRule('find_regex', e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
                         />
-                        <span>Sử dụng Biểu thức chính quy (Regex)</span>
+                        <span>Sử dụng Regex (Biểu thức chính quy)</span>
                       </label>
-
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={rules.find_match_case}
-                          onChange={(e) => updateRules((r) => ({ ...r, find_match_case: e.target.checked }))}
-                          className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-900 text-indigo-600"
+                          onChange={(e) => updateRule('find_match_case', e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
                         />
-                        <span>Phân biệt chữ HOA / thường (Match case)</span>
+                        <span>Phân biệt chữ HOA / thường</span>
                       </label>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
+              )}
 
-            {/* TAB 3: TIỀN TỐ/HẬU TỐ & ĐÁNH SỐ THỨ TỰ (Numbering / Indexing) */}
-            {activeTab === 'numbering' && (
-              <div className="space-y-4">
-                {/* Prefix & Suffix */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700 space-y-3">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rules.prefix_suffix}
-                      onChange={(e) => updateRules((r) => ({ ...r, prefix_suffix: e.target.checked }))}
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-semibold text-slate-200">Thêm Tiền Tố & Hậu Tố</span>
-                  </label>
-
-                  {rules.prefix_suffix && (
-                    <div className="space-y-2.5 pt-2">
+              {/* TAB 3: TIỀN TỐ/HẬU TỐ & ĐÁNH SỐ THỨ TỰ */}
+              {activeTab === 'numbering' && (
+                <div className="space-y-3 animate-in fade-in duration-200">
+                  {/* Tiền tố / Hậu tố */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.prefix_suffix}
+                        onChange={(e) => updateRule('prefix_suffix', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
                       <div>
-                        <span className="block text-xs text-slate-400 mb-1">Tiền tố (Đầu tên):</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Thêm Tiền Tố &amp; Hậu Tố</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Chèn chuỗi ký tự vào đầu hoặc cuối tên tệp</p>
+                      </div>
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
+                      <div>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Tiền tố (Prefix):</label>
                         <input
                           type="text"
-                          placeholder="vd: Project_..."
                           value={rules.prefix_text}
-                          onChange={(e) => updateRules((r) => ({ ...r, prefix_text: e.target.value }))}
-                          className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none"
+                          onChange={(e) => updateRule('prefix_text', e.target.value)}
+                          placeholder="vd: HinhAnh_"
+                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
                         />
                       </div>
                       <div>
-                        <span className="block text-xs text-slate-400 mb-1">Hậu tố (Cuối tên, trước đuôi):</span>
+                        <label className="block text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-1">Hậu tố (Suffix):</label>
                         <input
                           type="text"
-                          placeholder="vd: _final..."
                           value={rules.suffix_text}
-                          onChange={(e) => updateRules((r) => ({ ...r, suffix_text: e.target.value }))}
-                          className="w-full rounded border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none"
+                          onChange={(e) => updateRule('suffix_text', e.target.value)}
+                          placeholder="vd: _BanChinh"
+                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
                         />
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Numbering / Auto Indexing */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700 space-y-3">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rules.numbering}
-                      onChange={(e) => updateRules((r) => ({ ...r, numbering: e.target.checked }))}
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-semibold text-slate-200">Đánh Số Thứ Tự (001, 002...)</span>
-                  </label>
+                  {/* Đánh Số Thứ Tự */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.numbering}
+                        onChange={(e) => updateRule('numbering', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đánh Số Tuần Tự (001, 002...)</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Tự động tăng số tuần tự cho từng file</p>
+                      </div>
+                    </label>
 
-                  {rules.numbering && (
-                    <div className="space-y-3 pt-2 text-xs">
-                      <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-2 text-xs pt-1">
+                      <div className="grid grid-cols-3 gap-1.5">
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-1">Bắt đầu:</label>
+                          <label className="block text-[10px] text-slate-500 dark:text-slate-400">Bắt đầu:</label>
                           <input
                             type="number"
-                            min="0"
                             value={rules.numbering_start}
-                            onChange={(e) => updateRules((r) => ({ ...r, numbering_start: parseInt(e.target.value) || 0 }))}
-                            className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white focus:border-indigo-500 focus:outline-none text-center"
+                            onChange={(e) => updateRule('numbering_start', parseInt(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-1">Bước nhảy:</label>
+                          <label className="block text-[10px] text-slate-500 dark:text-slate-400">Bước nhảy:</label>
                           <input
                             type="number"
-                            min="1"
                             value={rules.numbering_step}
-                            onChange={(e) => updateRules((r) => ({ ...r, numbering_step: parseInt(e.target.value) || 1 }))}
-                            className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white focus:border-indigo-500 focus:outline-none text-center"
+                            onChange={(e) => updateRule('numbering_step', parseInt(e.target.value) || 1)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-1">Chữ số (Pad):</label>
+                          <label className="block text-[10px] text-slate-500 dark:text-slate-400">Số chữ số:</label>
                           <input
                             type="number"
-                            min="1"
-                            max="8"
                             value={rules.numbering_padding}
-                            onChange={(e) => updateRules((r) => ({ ...r, numbering_padding: parseInt(e.target.value) || 1 }))}
-                            className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white focus:border-indigo-500 focus:outline-none text-center"
+                            onChange={(e) => updateRule('numbering_padding', parseInt(e.target.value) || 3)}
+                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] text-slate-400 mb-1">Vị trí chèn số:</label>
-                        <div className="space-y-1.5 pl-1">
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="num_pos"
-                              checked={rules.numbering_position === 'suffix'}
-                              onChange={() => updateRules((r) => ({ ...r, numbering_position: 'suffix' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Cuối tên (vd: Anh_001)</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="num_pos"
-                              checked={rules.numbering_position === 'prefix'}
-                              onChange={() => updateRules((r) => ({ ...r, numbering_position: 'prefix' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Đầu tên (vd: 001_Anh)</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="num_pos"
-                              checked={rules.numbering_position === 'replace_all'}
-                              onChange={() => updateRules((r) => ({ ...r, numbering_position: 'replace_all' }))}
-                              className="text-indigo-600"
-                            />
-                            <span>Thay thế tên bằng tiền tố + số</span>
-                          </label>
-                        </div>
+                      <div className="space-y-1 text-slate-600 dark:text-slate-300 pt-1">
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="num_pos"
+                            checked={rules.numbering_position === 'suffix'}
+                            onChange={() => updateRule('numbering_position', 'suffix')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Chèn ở cuối tên (vd: Anh_001)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="num_pos"
+                            checked={rules.numbering_position === 'prefix'}
+                            onChange={() => updateRule('numbering_position', 'prefix')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Chèn ở đầu tên (vd: 001_Anh)</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="num_pos"
+                            checked={rules.numbering_position === 'replace_all'}
+                            onChange={() => updateRule('numbering_position', 'replace_all')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Thay thế hoàn toàn bằng tiền tố + số</span>
+                        </label>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] text-slate-400 mb-1">Ký tự ngăn cách / Tiền tố:</label>
+                      <div className="flex items-center gap-2 pt-1">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Ký tự ngăn cách:</span>
                         <input
                           type="text"
                           value={rules.numbering_custom_text}
-                          onChange={(e) => updateRules((r) => ({ ...r, numbering_custom_text: e.target.value }))}
-                          placeholder="_"
-                          className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white focus:border-indigo-500 focus:outline-none"
+                          onChange={(e) => updateRule('numbering_custom_text', e.target.value)}
+                          className="w-16 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                         />
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* TAB 4: KIỂU CHỮ & ĐUÔI MỞ RỘNG (Case & Extension) */}
-            {activeTab === 'case' && (
-              <div className="space-y-4">
-                {/* Case Rule */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700 space-y-3">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rules.case_transform}
-                      onChange={(e) => updateRules((r) => ({ ...r, case_transform: e.target.checked }))}
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-semibold text-slate-200">Đổi Kiểu Chữ Hoa / Thường</span>
-                  </label>
-
-                  {rules.case_transform && (
-                    <div className="space-y-1.5 pt-2 text-xs pl-1">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="case_type"
-                          checked={rules.case_type === 'title'}
-                          onChange={() => updateRules((r) => ({ ...r, case_type: 'title' }))}
-                          className="text-indigo-600"
-                        />
-                        <span>Title Case (Viết Hoa Chữ Đầu Mỗi Từ)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="case_type"
-                          checked={rules.case_type === 'sentence'}
-                          onChange={() => updateRules((r) => ({ ...r, case_type: 'sentence' }))}
-                          className="text-indigo-600"
-                        />
-                        <span>Sentence case (Viết hoa chữ đầu câu)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="case_type"
-                          checked={rules.case_type === 'upper'}
-                          onChange={() => updateRules((r) => ({ ...r, case_type: 'upper' }))}
-                          className="text-indigo-600"
-                        />
-                        <span>UPPERCASE (VIẾT HOA TOÀN BỘ)</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="case_type"
-                          checked={rules.case_type === 'lower'}
-                          onChange={() => updateRules((r) => ({ ...r, case_type: 'lower' }))}
-                          className="text-indigo-600"
-                        />
-                        <span>lowercase (viết thường toàn bộ)</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                {/* ChangeExtensionRule */}
-                <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-4 transition hover:border-slate-700 space-y-3">
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rules.change_extension}
-                      onChange={(e) => updateRules((r) => ({ ...r, change_extension: e.target.checked }))}
-                      className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-semibold text-slate-200">Đổi Đuôi Mở Rộng (Extension)</span>
-                  </label>
-
-                  {rules.change_extension && (
-                    <div className="pt-2 flex items-center gap-2 text-xs">
-                      <span className="text-slate-400">Đuôi mới:</span>
+              {/* TAB 4: KIỂU CHỮ & ĐUÔI MỞ RỘNG */}
+              {activeTab === 'case' && (
+                <div className="space-y-3 animate-in fade-in duration-200">
+                  {/* Đổi kiểu chữ */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
-                        type="text"
-                        placeholder="png, pdf, mp4..."
-                        value={rules.new_extension}
-                        onChange={(e) => updateRules((r) => ({ ...r, new_extension: e.target.value }))}
-                        className="w-28 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-white placeholder-slate-600 focus:border-indigo-500 focus:outline-none font-mono"
+                        type="checkbox"
+                        checked={rules.case_transform}
+                        onChange={(e) => updateRule('case_transform', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </aside>
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đổi Định Dạng Chữ</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Biến đổi chữ hoa, chữ thường, viết hoa đầu từ</p>
+                      </div>
+                    </label>
 
-        {/* Right Content: Real-time Preview Table với Search Bar & Filter Chips */}
-        <main className="flex flex-1 flex-col overflow-hidden bg-slate-950 p-5">
-          {message && (
-            <div
-              className={`mb-3.5 flex items-center justify-between rounded-xl px-4 py-2.5 text-sm ${
-                message.type === 'success'
-                  ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                  : message.type === 'error'
-                  ? 'border border-red-500/30 bg-red-500/10 text-red-300'
-                  : 'border border-blue-500/30 bg-blue-500/10 text-blue-300'
-              }`}
-            >
-              <span>{message.text}</span>
-              <button onClick={() => setMessage(null)} className="text-xs opacity-60 hover:opacity-100">
-                ✕
-              </button>
+                    {rules.case_transform && (
+                      <div className="pl-6 space-y-1.5 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="case_type"
+                            checked={rules.case_type === 'title'}
+                            onChange={() => updateRule('case_type', 'title')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Title Case (Viết Hoa Chữ Đầu Từ)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="case_type"
+                            checked={rules.case_type === 'sentence'}
+                            onChange={() => updateRule('case_type', 'sentence')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>Sentence case (Viết hoa chữ đầu câu)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="case_type"
+                            checked={rules.case_type === 'upper'}
+                            onChange={() => updateRule('case_type', 'upper')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>UPPERCASE (VIẾT HOA TOÀN BỘ)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="case_type"
+                            checked={rules.case_type === 'lower'}
+                            onChange={() => updateRule('case_type', 'lower')}
+                            className="text-indigo-600 focus:ring-0 cursor-pointer"
+                          />
+                          <span>lowercase (viết thường toàn bộ)</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Đổi Đuôi Mở Rộng */}
+                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                    <label className="flex items-start gap-2.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={rules.change_extension}
+                        onChange={(e) => updateRule('change_extension', e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      />
+                      <div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đổi Đuôi Mở Rộng (Extension)</span>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Thay đổi phần mở rộng tệp tin hàng loạt</p>
+                      </div>
+                    </label>
+
+                    {rules.change_extension && (
+                      <div className="pl-6 pt-1 flex items-center gap-2">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Đuôi mới:</span>
+                        <input
+                          type="text"
+                          value={rules.new_extension}
+                          onChange={(e) => updateRule('new_extension', e.target.value)}
+                          placeholder="png"
+                          className="w-20 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
 
-          {previewItems.length === 0 ? (
-            isScanning || loading ? (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-indigo-500/20 bg-slate-900/60 p-8 text-center shadow-2xl backdrop-blur-sm">
-                <div className="relative mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-950/80 border border-indigo-500/30 shadow-lg shadow-indigo-950/50">
-                  <div className="absolute inset-0 rounded-3xl bg-indigo-500/10 animate-ping" />
-                  <Loader2 className="h-10 w-10 text-indigo-400 animate-spin" />
+            {/* Phía dưới Sidebar: Cài Đặt Phạm Vi Quét & Benchmark */}
+            <div className="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 p-4 space-y-3">
+              {/* Settings Card */}
+              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3 space-y-2 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+                  <Settings className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>CÀI ĐẶT PHẠM VI QUÉT</span>
                 </div>
-                <h3 className="text-base font-semibold text-slate-100">
-                  {isScanning ? 'Đang quét thư mục...' : 'Đang xử lý & tải danh sách tệp tin...'}
-                </h3>
-                <p className="mt-2 max-w-md text-xs text-slate-400">
-                  {isScanning
-                    ? `Đã tìm thấy ${scanProgress.count.toLocaleString()} tệp tin (${(scanProgress.dirCount ?? 0).toLocaleString()} thư mục đã duyệt)`
-                    : 'Hệ thống đang chuẩn bị xem trước và tối ưu hóa hiển thị, vui lòng chờ trong giây lát...'}
-                </p>
-                {isScanning && scanProgress.currentDir && (
-                  <div className="mt-4 max-w-lg truncate rounded-lg border border-slate-800 bg-slate-950/80 px-4 py-2 font-mono text-[11px] text-slate-300">
-                    📂 {scanProgress.currentDir}
-                  </div>
-                )}
-                {isScanning && (
-                  <button
-                    onClick={handleCancelScan}
-                    className="mt-5 rounded-lg border border-red-500/40 bg-red-950/40 px-4 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-900/60 transition cursor-pointer"
-                  >
-                    ✕ Dừng Quét Thư Mục
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/20 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800/80 text-slate-400">
-                  <FileCode className="h-8 w-8" />
-                </div>
-                <h3 className="mt-4 text-base font-semibold text-slate-200">Chưa có tập tin nào</h3>
-                <p className="mt-1 max-w-sm text-xs text-slate-400">
-                  Chọn danh sách file riêng lẻ hoặc quét toàn bộ thư mục để bắt đầu trải nghiệm bộ công cụ đổi tên chuyên nghiệp.
-                </p>
-                <div className="mt-5 flex items-center gap-3">
-                  <button
-                    onClick={handleScanFolder}
-                    className="flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-amber-900/30 transition cursor-pointer"
-                  >
-                    <FolderOpen className="h-3.5 w-3.5" />
-                    Quét Toàn Bộ Thư Mục
-                  </button>
-                  <button
-                    onClick={handleSelectFiles}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-indigo-900/30 transition cursor-pointer"
-                  >
-                    <FileText className="h-3.5 w-3.5" />
-                    Mở Hộp Thoại Chọn Files
-                  </button>
+
+                <div className="space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                  <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 dark:hover:text-white transition">
+                    <input
+                      type="checkbox"
+                      checked={recursiveScan}
+                      onChange={(e) => handleOptionToggle('recursive', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Quét sâu thư mục con (Recursive)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 dark:hover:text-white transition">
+                    <input
+                      type="checkbox"
+                      checked={includeHidden}
+                      onChange={(e) => handleOptionToggle('hidden', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Bao gồm cả tệp &amp; thư mục ẩn</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 dark:hover:text-white transition">
+                    <input
+                      type="checkbox"
+                      checked={includeFolders}
+                      onChange={(e) => handleOptionToggle('folders', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                    />
+                    <span>Đổi tên cả Thư mục (Folder)</span>
+                  </label>
                 </div>
               </div>
-            )
-          ) : (
-            <div className="relative flex flex-1 flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50 shadow-inner">
-              {(loading || isExpanding) && (
-                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-slate-950/75 backdrop-blur-xs">
-                  <div className="flex items-center gap-3 rounded-xl border border-indigo-500/30 bg-slate-900/90 px-5 py-3 shadow-2xl">
-                    <Loader2 className="h-5 w-5 text-indigo-400 animate-spin" />
-                    <span className="text-xs font-semibold text-slate-200">
-                      {isExpanding ? 'Đang tải toàn bộ dữ liệu lên giao diện...' : 'Đang cập nhật danh sách xem trước...'}
-                    </span>
-                  </div>
-                </div>
-              )}
-              {/* Cảnh báo Full Path quá dài & Nút gợi ý 1-Click sửa nhanh */}
-              {longPathCount > 0 && (
-                <div className="m-3 mb-0 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2.5 text-xs text-amber-300 shadow-sm animate-pulse">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
-                    <span>
-                      Phát hiện <strong>{longPathCount} tệp tin</strong> có Full Path vượt quá 250 ký tự (nguy cơ lỗi hệ điều hành Windows).
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => updateRules((r) => ({ ...r, truncate_long_path: true }))}
-                    className="flex items-center gap-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 px-3 py-1 font-semibold text-white shadow transition active:scale-95 cursor-pointer"
-                    title="Tự động co gọn tên file theo thuật toán cắt giữa (đầu...đuôi) để đảm bảo Full Path <= 250 ký tự"
-                  >
-                    <Sparkles className="h-3.5 w-3.5" />
-                    ⚡ Tự Động Co Gọn An Toàn (Smart Truncate)
-                  </button>
-                </div>
-              )}
 
-              {/* Thanh tìm kiếm và bộ lọc trạng thái */}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/90 px-4 py-2 text-xs">
-                {/* Search Box */}
-                <div className="relative flex-1 min-w-[220px] max-w-md">
-                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+              {/* Benchmark Widget */}
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1 font-mono">
+                <span>⚡ {benchmarkTime.toFixed(1)} ms</span>
+                <span>{benchmarkThroughput.toLocaleString()} tệp/giây</span>
+              </div>
+            </div>
+          </aside>
+
+          {/* --------------------------------------------------------------------- */}
+          {/* KHU VỰC CHÍNH (MAIN CONTENT - BẢNG XEM TRƯỚC / DROPZONE)               */}
+          {/* --------------------------------------------------------------------- */}
+          <main className="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-950/50">
+            {/* Thanh Tìm Kiếm & Bộ Lọc Nhanh (chỉ hiển thị khi đã nạp tệp tin) */}
+
+            {files.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 px-6 py-2.5 text-xs">
+                {/* Ô Tìm kiếm */}
+                <div className="relative w-72">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Tìm nhanh tệp tin trong danh sách..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full rounded-lg border border-slate-700 bg-slate-950 pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                    placeholder="Tìm kiếm theo tên file..."
+                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-1.5 text-slate-500 hover:text-white"
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
                     >
-                      ✕
+                      <X className="h-3 w-3" />
                     </button>
                   )}
                 </div>
 
-                {/* Status Filter Chips */}
+                {/* Các Chip Lọc Trạng Thái */}
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setStatusFilter('all')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                      statusFilter === 'all'
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-400 hover:bg-slate-800'
-                    }`}
+                    className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'all'
+                        ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-2xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                      }`}
                   >
-                    Tất cả ({previewItems.length})
+                    Tất cả ({previewItems.length.toLocaleString()})
                   </button>
                   <button
                     onClick={() => setStatusFilter('renamed')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                      statusFilter === 'renamed'
-                        ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/40'
-                        : 'text-slate-400 hover:bg-slate-800'
-                    }`}
+                    className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'renamed'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                      }`}
                   >
-                    Đã đổi ({previewItems.filter((i) => i.status === 'renamed').length})
+                    Đã đổi
                   </button>
                   <button
                     onClick={() => setStatusFilter('unchanged')}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                      statusFilter === 'unchanged'
-                        ? 'bg-slate-700 text-slate-200'
-                        : 'text-slate-400 hover:bg-slate-800'
-                    }`}
-                  >
-                    Giữ nguyên ({previewItems.filter((i) => i.status === 'unchanged').length})
-                  </button>
-                  {previewItems.some((i) => i.status === 'collision_resolved') && (
-                    <button
-                      onClick={() => setStatusFilter('collision')}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                        statusFilter === 'collision'
-                          ? 'bg-amber-600/30 text-amber-300 border border-amber-500/40'
-                          : 'text-slate-400 hover:bg-slate-800'
+                    className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'unchanged'
+                        ? 'bg-slate-600 dark:bg-slate-700 text-white shadow-2xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800'
                       }`}
-                    >
-                      Xung đột ({previewItems.filter((i) => i.status === 'collision_resolved').length})
-                    </button>
-                  )}
+                  >
+                    Giữ nguyên
+                  </button>
+                  <button
+                    onClick={() => setStatusFilter('collision')}
+                    className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'collision'
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                      }`}
+                  >
+                    Trùng: _1
+                  </button>
                   {longPathCount > 0 && (
                     <button
-                      onClick={() => setStatusFilter('long_path' as any)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
-                        (statusFilter as string) === 'long_path'
-                          ? 'bg-red-600/30 text-red-300 border border-red-500/40'
-                          : 'text-slate-400 hover:bg-slate-800'
-                      }`}
+                      onClick={() => setStatusFilter('long_path')}
+                      className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'long_path'
+                          ? 'bg-rose-600 text-white shadow-2xs'
+                          : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60'
+                        }`}
                     >
-                      Đường dẫn dài ({longPathCount})
+                      ⚠️ Dài &gt; 250 ({longPathCount})
                     </button>
                   )}
                 </div>
-
-                {loading && <span className="text-indigo-400 animate-pulse text-[11px]">Đang tính toán trên RAM...</span>}
               </div>
+            )}
 
-              {/* Bảng danh sách tệp tin */}
-              <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 border-b border-slate-800 bg-slate-900 text-slate-400 z-10">
-                    <tr>
-                      <th className="py-2.5 pl-4 pr-2 font-medium w-12">#</th>
-                      <th className="px-3 py-2.5 font-medium">Tên Ban Đầu</th>
-                      <th className="px-3 py-2.5 font-medium">Tên Mới Dự Kiến</th>
-                      <th className="py-2.5 pl-3 pr-4 font-medium text-right w-44">Trạng Thái & Thao Tác</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-mono">
-                    {visibleItems.map((item, idx) => (
-                      <tr key={item.id} className="transition hover:bg-slate-800/30">
-                        <td className="py-2 pl-4 pr-2 text-slate-500">{idx + 1}</td>
-                        <td className="px-3 py-2 text-slate-300 font-sans truncate max-w-xs" title={item.path}>
-                          {item.old_name}
-                        </td>
-                        <td className="px-3 py-2 font-medium text-indigo-300 truncate max-w-xs font-sans">
-                          {item.new_name}
-                        </td>
-                        <td className="py-2 pl-3 pr-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            {item.is_long_path && (
-                              <span
-                                className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-semibold text-red-400 border border-red-500/30"
-                                title={`Full Path dài ${item.full_path_len} ký tự! Vượt ngưỡng an toàn 250 ký tự.`}
-                              >
-                                ⚠️ {item.full_path_len} kt
-                              </span>
-                            )}
-
-                            {item.status === 'collision_resolved' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-400 border border-amber-500/20">
-                                <AlertTriangle className="h-3 w-3" />
-                                Trùng: _1
-                              </span>
-                            ) : item.status === 'renamed' ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-400 border border-emerald-500/20">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Đã đổi
-                              </span>
-                            ) : item.status === 'unchanged' ? (
-                              <span className="inline-block rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400">
-                                Giữ nguyên
-                              </span>
-                            ) : (
-                              <span className="inline-block rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400 border border-indigo-500/20">
-                                Sẵn sàng
-                              </span>
-                            )}
-
-                            <button
-                              onClick={() => handleOpenFolder(item.path)}
-                              title="Mở trong File Explorer"
-                              className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-indigo-300 transition"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Thông báo Banner trạng thái */}
+            {message && (
+              <div
+                className={`flex items-center justify-between px-6 py-2.5 text-xs font-medium border-b animate-in fade-in duration-150 ${message.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                    : message.type === 'error'
+                      ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                  }`}
+              >
+                <span>{message.text}</span>
+                <button onClick={() => setMessage(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer">
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </div>
+            )}
 
-              {/* Thanh phân trang / hiển thị nhanh khi danh sách lớn */}
-              {filteredItems.length > displayLimit && (
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/90 px-4 py-2 text-xs text-slate-400">
+            {/* Cảnh báo đường dẫn quá dài kèm nút 1-Click Auto Fix */}
+            {longPathCount > 0 && (
+              <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800 px-6 py-2.5 text-xs">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
                   <span>
-                    Đang hiển thị <strong>{visibleItems.length.toLocaleString()}</strong> / <strong>{filteredItems.length.toLocaleString()}</strong> mục (Dùng ô Tìm Kiếm để lọc tức thì).
+                    Phát hiện <strong>{longPathCount} tệp</strong> có Full Path &gt; 250 ký tự có thể gặp lỗi trên Windows cũ.
                   </span>
-                  <div className="flex items-center gap-2">
+                </div>
+                <button
+                  onClick={handleAutoTruncate}
+                  className="rounded-lg bg-amber-600 px-3 py-1 font-bold text-white shadow-2xs hover:bg-amber-500 transition cursor-pointer"
+                >
+                  ⚡ Tự Động Co Gọn An Toàn
+                </button>
+              </div>
+            )}
+
+            {/* ----------------------------------------------------------------- */}
+            {/* VÙNG CHỨA BẢNG XEM TRƯỚC HOẶC KHUNG EMPTY STATE (DROPZONE)        */}
+            {/* ----------------------------------------------------------------- */}
+            <div className="flex-1 overflow-hidden relative">
+              {files.length === 0 ? (
+                /* KHUNG TRỐNG (EMPTY STATE / DROPZONE) */
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setIsDragging(false);
+                  }}
+                  className={`h-full flex flex-col items-center justify-center p-8 transition-all duration-200 ${isDragging ? 'bg-indigo-50/60 dark:bg-indigo-950/40 border-2 border-dashed border-indigo-500' : ''
+                    }`}
+                >
+                  <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100/80 dark:border-indigo-800/60 shadow-md shadow-indigo-100 dark:shadow-none mb-5">
+                    <FolderPlus className="h-10 w-10 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+
+                  <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-1.5">
+                    Kéo thả thư mục vào đây hoặc bấm nút Chọn
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md text-center leading-relaxed mb-6">
+                    Hỗ trợ quét đệ quy hàng trăm nghìn tệp tin, chuẩn hóa tiếng Việt, xử lý đường dẫn dài và nén ảnh tốc độ cao.
+                  </p>
+
+                  <div className="flex items-center gap-3">
                     <button
-                      onClick={() => handleExpandDisplay(displayLimit + 1000)}
-                      disabled={isExpanding}
-                      className="rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 px-3 py-1 font-semibold text-indigo-300 transition cursor-pointer disabled:opacity-50"
+                      onClick={handleScanFolder}
+                      className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/20 transition-all duration-200 hover:bg-indigo-500 active:scale-95 cursor-pointer"
                     >
-                      + Xem thêm 1,000 tệp
+                      <FolderOpen className="h-4 w-4" />
+                      <span>Chọn Thư Mục</span>
                     </button>
                     <button
-                      onClick={() => handleExpandDisplay(filteredItems.length)}
-                      disabled={isExpanding}
-                      className="flex items-center gap-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 px-3 py-1 text-slate-300 transition cursor-pointer disabled:opacity-50"
+                      onClick={handleSelectFiles}
+                      className="flex items-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-400 dark:hover:border-slate-600 active:scale-95 cursor-pointer"
                     >
-                      {isExpanding && <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400" />}
-                      Hiển thị tất cả
+                      <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                      <span>Chọn Tệp Tin</span>
                     </button>
                   </div>
                 </div>
+              ) : (
+                /* BẢNG DANH SÁCH FILE XEM TRƯỚC (CLEAN TABLE) */
+                <div className="h-full overflow-y-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-xs border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="py-3 px-4 w-12 text-center">#</th>
+                        <th className="py-3 px-4 w-1/3">Tên Ban Đầu</th>
+                        <th className="py-3 px-4 w-1/3">Tên Mới Dự Kiến</th>
+                        <th className="py-3 px-3 w-28 text-center">Độ Dài Path</th>
+                        <th className="py-3 px-4 w-32 text-center">Trạng Thái</th>
+                        <th className="py-3 px-3 w-16 text-center">Thao Tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/80 bg-white dark:bg-slate-950">
+                      {visibleItems.map((item, idx) => (
+                        <tr key={item.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/25 transition-colors duration-150">
+                          {/* Index */}
+                          <td className="py-2.5 px-4 text-center font-mono text-slate-400 dark:text-slate-500 text-[11px]">{idx + 1}</td>
+
+                          {/* Old Name */}
+                          <td className="py-2.5 px-4 font-medium text-slate-800 dark:text-slate-200 break-all">{item.old_name}</td>
+
+                          {/* New Name */}
+                          <td className="py-2.5 px-4 break-all">
+                            <span className="font-semibold text-indigo-600 dark:text-indigo-400">{item.new_name}</span>
+                          </td>
+
+                          {/* Path Length Badge */}
+                          <td className="py-2.5 px-3 text-center">
+                            <div className="inline-flex items-center gap-1 font-mono text-[11px]">
+                              <span className="text-slate-500 dark:text-slate-400">{item.path_length}</span>
+                              {item.is_long_path && (
+                                <span className="rounded-full bg-rose-50 dark:bg-rose-950/80 border border-rose-200 dark:border-rose-800 px-1.5 py-0.2 text-[9px] font-bold text-rose-600 dark:text-rose-400">
+                                  Dài
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Status Badge */}
+                          <td className="py-2.5 px-4 text-center">
+                            {item.status === 'renamed' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                <CheckCircle2 className="h-3 w-3" />
+                                Đã đổi
+                              </span>
+                            ) : item.status === 'collision_resolved' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                <AlertCircle className="h-3 w-3" />
+                                Trùng: _1
+                              </span>
+                            ) : item.status === 'unchanged' ? (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                Giữ nguyên
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-2.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
+                                Sẵn sàng
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Thao tác (Open Explorer) */}
+                          <td className="py-2.5 px-3 text-center">
+                            <button
+                              onClick={() => handleOpenFolder(item.path)}
+                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                              title="Định vị trong File Explorer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {/* Thanh phân trang hiển thị khi danh sách lớn */}
+                  {filteredItems.length > displayLimit && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-6 py-3 text-xs text-slate-500 dark:text-slate-400">
+                      <span>
+                        Đang hiển thị <strong>{visibleItems.length.toLocaleString()}</strong> /{' '}
+                        <strong>{filteredItems.length.toLocaleString()}</strong> mục.
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleExpandDisplay(displayLimit + 1000)}
+                          disabled={isExpanding}
+                          className="rounded-lg bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900 border border-indigo-200 dark:border-indigo-800 px-3 py-1 font-semibold text-indigo-600 dark:text-indigo-300 transition cursor-pointer"
+                        >
+                          + Xem thêm 1,000 tệp
+                        </button>
+                        <button
+                          onClick={() => handleExpandDisplay(filteredItems.length)}
+                          disabled={isExpanding}
+                          className="rounded-lg bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 px-3 py-1 text-slate-700 dark:text-slate-300 font-medium transition cursor-pointer"
+                        >
+                          {isExpanding && <Loader2 className="h-3 w-3 animate-spin mr-1 inline" />}
+                          Hiển thị tất cả
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </main>
-      </div>
+
+            {/* Footer Bar */}
+            <div className="flex h-8 shrink-0 items-center justify-between border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>Sẵn sàng: {filteredItems.length.toLocaleString()} tệp tin</span>
+              <span className="font-mono">Rust Tauri v2 • React 18 + Tailwind CSS</span>
+            </div>
+          </main>
+        </div>
       ) : (
+        /* ========================================================================= */
+        /* CHẾ ĐỘ GIẢM KÍCH THƯỚC ẢNH (IMAGE RESIZER VIEW)                           */
+        /* ========================================================================= */
         <ImageResizerView
           imageItems={imageItems}
           selectedImagePaths={selectedImagePaths}
@@ -1812,6 +1873,10 @@ export default function App() {
         />
       )}
 
+      {/* ========================================================================= */}
+      {/* CÁC MODAL HỘP THOẠI XÁC NHẬN & THÔNG TIN                                  */}
+      {/* ========================================================================= */}
+
       {/* Modal Xác Nhận Ghi Đè Nguy Hiểm */}
       <ConfirmOverwriteModal
         isOpen={showConfirmModal}
@@ -1822,32 +1887,35 @@ export default function App() {
         isResizing={isResizing}
       />
 
-      {/* Overlay tiến độ giảm dung lượng ảnh */}
+      {/* Modal Giới Thiệu & Cập Nhật GitHub */}
+      <AboutModal isOpen={showAboutModal} onClose={() => setShowAboutModal(false)} />
+
+      {/* Overlay Tiến Độ Giảm Dung Lượng Ảnh Đa Luồng */}
       {isResizing && resizeProgress && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-rose-500/50 bg-slate-900 p-6 shadow-2xl space-y-4 text-center">
-            <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-950/80 border border-rose-500/40">
-              <Loader2 className="h-8 w-8 text-rose-400 animate-spin" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl space-y-4 text-center">
+            <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 border border-rose-100">
+              <Loader2 className="h-7 w-7 text-rose-600 animate-spin" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Đang Giảm Kích Thước &amp; Ghi Đè Ảnh...</h3>
-              <p className="text-xs text-slate-400 mt-1 truncate max-w-xs mx-auto font-mono">
+              <h3 className="text-base font-bold text-slate-900">Đang Giảm Kích Thước &amp; Ghi Đè Ảnh...</h3>
+              <p className="text-xs text-slate-500 mt-1 truncate max-w-xs mx-auto font-mono">
                 {resizeProgress.current_file}
               </p>
             </div>
 
-            <div className="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-slate-800">
+            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-rose-600 to-amber-500 h-full transition-all duration-150"
+                className="bg-gradient-to-r from-rose-600 to-indigo-600 h-full transition-all duration-150"
                 style={{ width: `${resizeProgress.percent}%` }}
               />
             </div>
 
-            <div className="flex justify-between text-xs font-mono text-slate-400">
+            <div className="flex justify-between text-xs font-mono text-slate-500">
               <span>
                 {resizeProgress.current} / {resizeProgress.total} ảnh
               </span>
-              <span className="font-bold text-rose-400">{resizeProgress.percent}%</span>
+              <span className="font-bold text-rose-600">{resizeProgress.percent}%</span>
             </div>
           </div>
         </div>

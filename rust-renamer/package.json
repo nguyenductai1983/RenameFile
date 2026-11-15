@@ -3,6 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "homepage": "https://github.com/nguyenductai1983/RenameFile",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nguyenductai1983/RenameFile.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nguyenductai1983/RenameFile/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",

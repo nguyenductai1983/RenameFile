@@ -227,14 +227,16 @@ pub async fn select_folder() -> Result<Option<String>, String> {
 pub async fn scan_selected_directory(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
-    folder_path: String,
+    folder_path: Option<String>,
+    dir_path: Option<String>,
     recursive: bool,
     include_hidden: Option<bool>,
     include_folders: Option<bool>,
 ) -> Result<Vec<String>, String> {
     state.cancel_scan.store(false, Ordering::SeqCst);
 
-    let target_dir = if folder_path.trim().is_empty() {
+    let raw_path = folder_path.or(dir_path).unwrap_or_default();
+    let target_dir = if raw_path.trim().is_empty() {
         let picked = rfd::FileDialog::new()
             .set_title("Chọn thư mục cần quét")
             .pick_folder();
@@ -243,7 +245,7 @@ pub async fn scan_selected_directory(
             None => return Ok(Vec::new()),
         }
     } else {
-        PathBuf::from(&folder_path)
+        PathBuf::from(&raw_path)
     };
 
     let base_path = if target_dir.is_relative() {
@@ -559,6 +561,37 @@ pub async fn open_folder_in_os(folder_path: String) -> Result<(), String> {
             .arg(target)
             .spawn()
             .map_err(|e| format!("Không thể mở trình duyệt tập tin: {:#}", e))?;
+        Ok(())
+    }
+}
+
+/// Mở một đường dẫn URL bất kỳ trong trình duyệt mặc định của hệ điều hành
+#[tauri::command]
+pub fn open_url_in_browser(url: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer.exe")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Không thể mở trình duyệt: {:#}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Không thể mở trình duyệt: {:#}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&url)
+            .spawn()
+            .map_err(|e| format!("Không thể mở trình duyệt: {:#}", e))?;
         Ok(())
     }
 }
