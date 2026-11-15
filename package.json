@@ -1,0 +1,12 @@
+{
+  "name": "rename-file-viet-workspace",
+  "private": true,
+  "description": "Rename File Viet Monorepo Root",
+  "scripts": {
+    "dev": "npm --prefix rust-renamer run dev",
+    "build": "npm --prefix rust-renamer run build",
+    "tauri": "npm --prefix rust-renamer run tauri",
+    "tauri:dev": "npm --prefix rust-renamer run tauri dev",
+    "tauri:build": "npm --prefix rust-renamer run tauri build"
+  }
+}

@@ -1,0 +1,30 @@
+﻿<Application x:Class="CSharpFileRenamer.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CSharpFileRenamer"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!-- Dynamic Theme Brushes (Khởi tạo mặc định Dark Theme) -->
+        <SolidColorBrush x:Key="ThemeBgWindow" Color="#0B0F19"/>
+        <SolidColorBrush x:Key="ThemeBgHeader" Color="#0F172A"/>
+        <SolidColorBrush x:Key="ThemeBgSubHeader" Color="#0C1322"/>
+        <SolidColorBrush x:Key="ThemeBgSidebar" Color="#0B0F19"/>
+        <SolidColorBrush x:Key="ThemeBgMainContent" Color="#090D16"/>
+        <SolidColorBrush x:Key="ThemeBgCard" Color="#0F172A"/>
+        <SolidColorBrush x:Key="ThemeBgCardAlt" Color="#131D31"/>
+        <SolidColorBrush x:Key="ThemeBgInput" Color="#020617"/>
+        <SolidColorBrush x:Key="ThemeBgFooter" Color="#020617"/>
+        <SolidColorBrush x:Key="ThemeBorder" Color="#1E293B"/>
+        <SolidColorBrush x:Key="ThemeBorderStrong" Color="#334155"/>
+        <SolidColorBrush x:Key="ThemeTextPrimary" Color="#F8FAFC"/>
+        <SolidColorBrush x:Key="ThemeTextSecondary" Color="#94A3B8"/>
+        <SolidColorBrush x:Key="ThemeTextMuted" Color="#64748B"/>
+        <SolidColorBrush x:Key="ThemeGridRowBg" Color="#0F172A"/>
+        <SolidColorBrush x:Key="ThemeGridRowAltBg" Color="#131D31"/>
+        <SolidColorBrush x:Key="ThemeGridHeaderBg" Color="#1E293B"/>
+        <SolidColorBrush x:Key="ThemeGridLines" Color="#1E293B"/>
+        <SolidColorBrush x:Key="ThemeGridOverlay" Color="#EE090D1A"/>
+        <SolidColorBrush x:Key="ThemeTabActiveBg" Color="#1E293B"/>
+        <SolidColorBrush x:Key="ThemeTabInactiveBg" Color="Transparent"/>
+    </Application.Resources>
+</Application>

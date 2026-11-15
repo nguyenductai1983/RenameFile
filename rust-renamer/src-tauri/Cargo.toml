@@ -1,0 +1,58 @@
+[package]
+name = "rename-file-viet"
+version = "0.1.0"
+edition = "2021"
+authors = ["Rename File Viet Contributors"]
+description = "Rename File Viet Desktop - Tauri v2 + React TypeScript"
+
+[lib]
+name = "rename_file_viet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rename-file-viet"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+# Tauri v2 Framework & Plugins
+tauri = { version = "2.0", features = [] }
+tauri-plugin-dialog = "2.0"
+rfd = "0.15"
+
+# Error Handling & Safety
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Unicode & Vietnamese Diacritics
+unicode-normalization = "0.1"
+
+# Regular Expressions & Parallelism
+regex = "1.10"
+rayon = "1.10"
+
+# Serialization & JSON
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4"] }
+
+# Date, File & Metadata Extraction
+chrono = { version = "0.4", features = ["serde"] }
+walkdir = "2.5"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "bmp"] }
+# Metadata Audio & Photo (Reserved for future plugin modules)
+# kamadak-exif = "0.5"
+# id3 = "1.14"
+csv = "1.3"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
