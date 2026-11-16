@@ -157,19 +157,19 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* CỘT TRÁI: CẤU HÌNH THU NHỎ & NÉN */}
-      <aside className="w-88 shrink-0 border-r border-slate-800 bg-slate-900/60 flex flex-col overflow-y-auto">
-        <div className="border-b border-slate-800 bg-slate-900/80 p-3.5 space-y-1">
+      <aside className="w-88 shrink-0 border-r border-neutral-800 bg-black flex flex-col overflow-y-auto">
+        <div className="border-b border-neutral-800 bg-[#0a0a0a] p-3.5 space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
             <Sliders className="h-4 w-4" />
             <span>⚙️ THIẾT LẬP THU NHỎ &amp; NÉN</span>
           </div>
-          <p className="text-[11px] text-slate-400">Điều chỉnh độ phân giải và chất lượng ảnh</p>
+          <p className="text-[11px] text-zinc-400">Điều chỉnh độ phân giải và chất lượng ảnh</p>
         </div>
 
         <div className="p-4 space-y-5 flex-1">
           {/* Mục 1: Kích thước tối đa & Presets */}
-          <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+          <div className="rounded-xl border border-neutral-800 bg-[#0a0a0a] p-3.5 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
               <Maximize2 className="h-3.5 w-3.5 text-indigo-400" />
               <span>Độ Phân Giải Tối Đa (Max Pixels)</span>
             </div>
@@ -178,25 +178,36 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
+                onClick={() => setPreset(2560, 1440)}
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                  resizeConfig.max_width === 2560 && resizeConfig.max_height === 1440
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
+                }`}
+              >
+                2K QHD (2560×1440)
+              </button>
+              <button
+                type="button"
                 onClick={() => setPreset(1920, 1080)}
                 className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
                   resizeConfig.max_width === 1920 && resizeConfig.max_height === 1080
                     ? 'bg-rose-600 text-white shadow-sm'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
                 }`}
               >
                 Full HD (1920×1080)
               </button>
               <button
                 type="button"
-                onClick={() => setPreset(2560, 1440)}
+                onClick={() => setPreset(1360, 768)}
                 className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
-                  resizeConfig.max_width === 2560 && resizeConfig.max_height === 1440
+                  resizeConfig.max_width === 1360 && resizeConfig.max_height === 768
                     ? 'bg-rose-600 text-white shadow-sm'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
                 }`}
               >
-                2K QHD (2560×1440)
+                Laptop HD (1360×768)
               </button>
               <button
                 type="button"
@@ -204,7 +215,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                 className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
                   resizeConfig.max_width === 1280 && resizeConfig.max_height === 720
                     ? 'bg-rose-600 text-white shadow-sm'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
                 }`}
               >
                 HD 720p (1280×720)
@@ -215,17 +226,28 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                 className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
                   resizeConfig.max_width === 1024 && resizeConfig.max_height === 768
                     ? 'bg-rose-600 text-white shadow-sm'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
                 }`}
               >
-                Web (1024×768)
+                Web Chuẩn (1024×768)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreset(3840, 2160)}
+                className={`rounded-lg px-2 py-1.5 text-[11px] font-medium transition cursor-pointer ${
+                  resizeConfig.max_width === 3840 && resizeConfig.max_height === 2160
+                    ? 'bg-rose-600 text-white shadow-sm'
+                    : 'bg-[#0a0a0a] text-zinc-300 hover:bg-neutral-900'
+                }`}
+              >
+                4K UHD (3840×2160)
               </button>
             </div>
 
             {/* Custom Inputs */}
             <div className="grid grid-cols-2 gap-2 pt-1 text-xs">
               <div>
-                <span className="block text-slate-400 mb-1">Rộng tối đa (W):</span>
+                <span className="block text-zinc-400 mb-1">Rộng tối đa (W):</span>
                 <div className="relative">
                   <input
                     type="number"
@@ -238,13 +260,13 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                         max_width: Math.max(0, parseInt(e.target.value) || 0),
                       }))
                     }
-                    className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-white focus:border-rose-500 focus:outline-none"
+                    className="w-full rounded border border-neutral-700 bg-black px-2 py-1 font-mono text-white focus:border-rose-500 focus:outline-none"
                   />
-                  <span className="absolute right-2 top-1 text-[10px] text-slate-500">px</span>
+                  <span className="absolute right-2 top-1 text-[10px] text-zinc-500">px</span>
                 </div>
               </div>
               <div>
-                <span className="block text-slate-400 mb-1">Cao tối đa (H):</span>
+                <span className="block text-zinc-400 mb-1">Cao tối đa (H):</span>
                 <div className="relative">
                   <input
                     type="number"
@@ -257,9 +279,9 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                         max_height: Math.max(0, parseInt(e.target.value) || 0),
                       }))
                     }
-                    className="w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 font-mono text-white focus:border-rose-500 focus:outline-none"
+                    className="w-full rounded border border-neutral-700 bg-black px-2 py-1 font-mono text-white focus:border-rose-500 focus:outline-none"
                   />
-                  <span className="absolute right-2 top-1 text-[10px] text-slate-500">px</span>
+                  <span className="absolute right-2 top-1 text-[10px] text-zinc-500">px</span>
                 </div>
               </div>
             </div>
@@ -275,18 +297,18 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                     preserve_aspect_ratio: e.target.checked,
                   }))
                 }
-                className="h-3.5 w-3.5 rounded border-slate-700 bg-slate-950 text-rose-600 focus:ring-0"
+                className="h-3.5 w-3.5 rounded border-neutral-700 bg-black text-rose-600 focus:ring-0"
               />
-              <span className="text-xs text-slate-300 font-medium select-none">
+              <span className="text-xs text-zinc-300 font-medium select-none">
                 Giữ nguyên tỉ lệ khung hình (Khuyên dùng)
               </span>
             </label>
           </div>
 
           {/* Mục 2: Chất lượng nén */}
-          <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 space-y-2.5">
+          <div className="rounded-xl border border-neutral-800 bg-[#0a0a0a] p-3.5 space-y-2.5">
             <div className="flex items-center justify-between text-xs font-semibold">
-              <span className="text-slate-200">Chất Lượng Nén (Quality):</span>
+              <span className="text-zinc-200">Chất Lượng Nén (Quality):</span>
               <span className="font-mono text-rose-400 font-bold">{resizeConfig.quality}%</span>
             </div>
 
@@ -305,21 +327,21 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
               className="w-full accent-rose-500 cursor-pointer"
             />
 
-            <div className="flex justify-between text-[10px] text-slate-400">
+            <div className="flex justify-between text-[10px] text-zinc-400">
               <span>10% (Siêu nhẹ)</span>
               <span className="text-emerald-400 font-medium">80% (Khuyên dùng)</span>
               <span>100% (Gốc)</span>
             </div>
-            <p className="text-[10px] text-slate-400 leading-tight">
+            <p className="text-[10px] text-zinc-400 leading-tight">
               Mức 75% - 85% cho chất lượng mắt thường khó phân biệt nhưng giảm tới 60-80% dung lượng tệp tin.
             </p>
           </div>
 
           {/* Mục 3: Định dạng xuất */}
-          <div className="rounded-xl border border-slate-800 bg-slate-800/40 p-3.5 space-y-2">
-            <span className="block text-xs font-semibold text-slate-200">Định Dạng Tệp Tin Xuất:</span>
+          <div className="rounded-xl border border-neutral-800 bg-[#0a0a0a] p-3.5 space-y-2">
+            <span className="block text-xs font-semibold text-zinc-200">Định Dạng Tệp Tin Xuất:</span>
             <div className="space-y-1.5 text-xs">
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
                 <input
                   type="radio"
                   name="format_mode"
@@ -329,7 +351,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                 />
                 <span>Giữ nguyên định dạng gốc (JPG, PNG, WebP)</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
                 <input
                   type="radio"
                   name="format_mode"
@@ -339,7 +361,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                 />
                 <span>Chuyển sang WebP (Nén cực nhẹ cho Web)</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+              <label className="flex items-center gap-2 cursor-pointer text-zinc-300">
                 <input
                   type="radio"
                   name="format_mode"
@@ -388,21 +410,21 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
       </aside>
 
       {/* CỘT PHẢI: BẢNG DANH SÁCH HÌNH ẢNH */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-slate-950 p-5">
+      <main className="flex flex-1 flex-col overflow-hidden bg-black p-5">
         {imageItems.length === 0 ? (
           isInspecting ? (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-rose-500/20 bg-slate-900/60 p-8 text-center shadow-2xl backdrop-blur-sm">
+            <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-rose-500/20 bg-black p-8 text-center shadow-2xl backdrop-blur-sm">
               <Loader2 className="h-10 w-10 text-rose-400 animate-spin mb-4" />
-              <h3 className="text-base font-semibold text-slate-100">Đang đọc thông số hình ảnh...</h3>
-              <p className="mt-2 text-xs text-slate-400">Hệ thống đang quét siêu tốc kích thước các tệp ảnh trên ổ cứng</p>
+              <h3 className="text-base font-semibold text-zinc-100">Đang đọc thông số hình ảnh...</h3>
+              <p className="mt-2 text-xs text-zinc-400">Hệ thống đang quét siêu tốc kích thước các tệp ảnh trên ổ cứng</p>
             </div>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-800 bg-slate-900/20 text-center p-8">
+            <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border-2 border-dashed border-neutral-800 bg-[#050505] text-center p-8">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-950/40 text-rose-400 border border-rose-900/30">
                 <ImageIcon className="h-8 w-8" />
               </div>
-              <h3 className="mt-4 text-base font-semibold text-slate-200">Chưa có tệp hình ảnh nào</h3>
-              <p className="mt-1 max-w-sm text-xs text-slate-400">
+              <h3 className="mt-4 text-base font-semibold text-zinc-200">Chưa có tệp hình ảnh nào</h3>
+              <p className="mt-1 max-w-sm text-xs text-zinc-400">
                 Hãy bấm "Quét Thư Mục" hoặc "Chọn Files" ở thanh trên để tìm các tệp ảnh (.jpg, .png, .webp, .bmp) cần giảm dung lượng.
               </p>
               <div className="mt-5 flex items-center gap-3">
@@ -426,18 +448,18 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
             </div>
           )
         ) : (
-          <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 shadow-xl backdrop-blur">
+          <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-800 bg-[#0a0a0a] shadow-xl backdrop-blur">
             {/* Top Toolbar: Tìm kiếm, lọc định dạng, chọn nhanh */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-slate-900/80 p-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 bg-[#0a0a0a] p-3 text-xs">
               {/* Tìm kiếm */}
               <div className="relative w-72">
-                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400" />
                 <input
                   type="text"
                   placeholder="Lọc tên ảnh trong danh sách..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full rounded-lg border border-slate-700 bg-slate-950 py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
+                  className="w-full rounded-lg border border-neutral-700 bg-black py-1.5 pl-8 pr-3 text-xs text-white placeholder-slate-500 focus:border-rose-500 focus:outline-none"
                 />
               </div>
 
@@ -451,7 +473,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                     className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
                       formatFilter === fmt
                         ? 'bg-rose-600 text-white shadow'
-                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                        : 'bg-neutral-900 text-zinc-400 hover:bg-neutral-800'
                     }`}
                   >
                     {fmt === 'all' ? 'Tất cả' : fmt}
@@ -464,14 +486,14 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                 <button
                   type="button"
                   onClick={onSelectAll}
-                  className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 transition cursor-pointer"
+                  className="rounded bg-neutral-900 px-2 py-1 text-[11px] text-zinc-300 hover:bg-neutral-800 transition cursor-pointer"
                 >
                   Chọn tất cả
                 </button>
                 <button
                   type="button"
                   onClick={onDeselectAll}
-                  className="rounded bg-slate-800 px-2 py-1 text-[11px] text-slate-300 hover:bg-slate-700 transition cursor-pointer"
+                  className="rounded bg-neutral-900 px-2 py-1 text-[11px] text-zinc-300 hover:bg-neutral-800 transition cursor-pointer"
                 >
                   Bỏ chọn
                 </button>
@@ -502,13 +524,13 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
               </div>
 
               {/* Thống kê */}
-              <div className="flex items-center gap-3 text-slate-300 font-mono text-[11px]">
+              <div className="flex items-center gap-3 text-zinc-300 font-mono text-[11px]">
                 <span>
                   Đã chọn: <strong className="text-rose-400">{selectedImagePaths.size}</strong> / {imageItems.length} ảnh
                 </span>
-                <span className="text-slate-500">|</span>
+                <span className="text-zinc-500">|</span>
                 <span>
-                  Dung lượng: <strong className="text-slate-200">{formatBytes(selectedBytes)}</strong>
+                  Dung lượng: <strong className="text-zinc-200">{formatBytes(selectedBytes)}</strong>
                 </span>
               </div>
             </div>
@@ -516,14 +538,14 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
             {/* Bảng Danh Sách */}
             <div className="flex-1 overflow-auto">
               <table className="w-full border-collapse text-left text-xs">
-                <thead className="sticky top-0 z-10 border-b border-slate-800 bg-slate-900 text-slate-400">
+                <thead className="sticky top-0 z-10 border-b border-neutral-800 bg-[#0a0a0a] text-zinc-400">
                   <tr>
                     <th className="w-10 px-3 py-3 text-center">
                       <input
                         type="checkbox"
                         checked={allFilteredSelected}
                         onChange={handleToggleSelectFiltered}
-                        className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-rose-600 focus:ring-0 cursor-pointer"
+                        className="h-4 w-4 rounded border-neutral-700 bg-black text-rose-600 focus:ring-0 cursor-pointer"
                       />
                     </th>
                     <th className="px-3 py-3 font-semibold">Tên Tệp Hình Ảnh</th>
@@ -554,7 +576,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                     return (
                       <tr
                         key={img.path}
-                        className={`transition hover:bg-slate-800/40 cursor-pointer ${
+                        className={`transition hover:bg-[#0a0a0a] cursor-pointer ${
                           isSelected ? 'bg-rose-950/15' : ''
                         }`}
                         onClick={() => onToggleSelect(img.path)}
@@ -565,16 +587,16 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => onToggleSelect(img.path)}
-                            className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-rose-600 focus:ring-0 cursor-pointer"
+                            className="h-4 w-4 rounded border-neutral-700 bg-black text-rose-600 focus:ring-0 cursor-pointer"
                           />
                         </td>
 
                         {/* Tên tệp & đường dẫn */}
                         <td className="px-3 py-2.5 max-w-xs">
-                          <div className="font-sans font-medium text-slate-100 truncate" title={img.file_name}>
+                          <div className="font-sans font-medium text-zinc-100 truncate" title={img.file_name}>
                             {img.file_name}
                           </div>
-                          <div className="text-[10px] text-slate-500 truncate" title={img.path}>
+                          <div className="text-[10px] text-zinc-500 truncate" title={img.path}>
                             {img.path}
                           </div>
                         </td>
@@ -595,7 +617,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                         </td>
 
                         {/* Kích thước gốc */}
-                        <td className="px-3 py-2.5 text-center text-slate-300">
+                        <td className="px-3 py-2.5 text-center text-zinc-300">
                           {img.width > 0 ? `${img.width} × ${img.height}` : 'Không rõ'}
                         </td>
 
@@ -603,7 +625,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                         <td className="px-3 py-2.5 text-center">
                           {img.width > 0 ? (
                             isAlreadySmaller && resizeConfig.format_mode === 'original' ? (
-                              <span className="text-slate-400">
+                              <span className="text-zinc-400">
                                 {img.width} × {img.height}{' '}
                                 <span className="text-[10px] text-amber-400 font-normal">
                                   (Đã nhỏ hơn)
@@ -614,7 +636,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                                 className={
                                   newW !== img.width || newH !== img.height
                                     ? 'text-emerald-400 font-bold'
-                                    : 'text-slate-400'
+                                    : 'text-zinc-400'
                                 }
                               >
                                 {newW} × {newH}
@@ -626,7 +648,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                         </td>
 
                         {/* Dung lượng file */}
-                        <td className="px-3 py-2.5 text-right text-slate-300">
+                        <td className="px-3 py-2.5 text-right text-zinc-300">
                           {formatBytes(img.file_size)}
                         </td>
 
@@ -674,7 +696,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                               Sẵn sàng nén
                             </span>
                           ) : (
-                            <span className="inline-block rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-500">
+                            <span className="inline-block rounded-full bg-neutral-900 px-2 py-0.5 text-[10px] text-zinc-500">
                               Bỏ qua
                             </span>
                           )}
@@ -686,7 +708,7 @@ export const ImageResizerView: React.FC<ImageResizerViewProps> = ({
                             type="button"
                             onClick={() => onOpenFolder(img.path)}
                             title="Mở thư mục trong File Explorer"
-                            className="rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-rose-300 transition"
+                            className="rounded p-1 text-zinc-400 hover:bg-neutral-900 hover:text-rose-300 transition"
                           >
                             <ExternalLink className="h-3.5 w-3.5" />
                           </button>

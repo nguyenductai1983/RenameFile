@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
+  Folder,
   FolderOpen,
   FolderPlus,
   Play,
@@ -55,6 +56,7 @@ interface BatchResizeSummary {
 interface FileItem {
   id: string;
   path: string;
+  folder?: string;
   old_name: string;
   new_name: string;
   status: string;
@@ -595,6 +597,14 @@ export default function App() {
     }
   };
 
+  // Lấy đường dẫn thư mục cha của tệp tin
+  const getFileDir = (item: FileItem): string => {
+    if (item.folder) return item.folder;
+    const p = item.path || '';
+    const lastSlash = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+    return lastSlash !== -1 ? p.slice(0, lastSlash) : '';
+  };
+
   // Mở thư mục chứa file trong Windows Explorer
   const handleOpenFolder = async (path: string) => {
     try {
@@ -761,11 +771,11 @@ export default function App() {
   // ==========================================
 
   return (
-    <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-100 antialiased select-none">
+    <div className="flex h-screen w-screen flex-col bg-slate-50 dark:bg-black font-sans text-slate-800 dark:text-slate-100 antialiased select-none">
       {/* ========================================================================= */}
       {/* VÙNG 1: THANH ĐIỀU HƯỚNG TRÊN CÙNG (TOP NAVIGATION BAR - macOS / Win 11)   */}
       {/* ========================================================================= */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-6 backdrop-blur-md shadow-xs z-20">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-neutral-800 bg-white/95 dark:bg-black/95 px-6 backdrop-blur-md shadow-xs z-20">
         {/* Brand Logo & Version */}
         <div
           onClick={() => setShowAboutModal(true)}
@@ -789,13 +799,13 @@ export default function App() {
         </div>
 
         {/* Chuyển Đổi Chế Độ (Mode Switcher Pills) */}
-        <div className="flex items-center rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200/80 dark:border-slate-700/80 shadow-inner">
+        <div className="flex items-center rounded-xl bg-slate-100 dark:bg-neutral-900 p-1 border border-slate-200/80 dark:border-neutral-800 shadow-inner">
           <button
             type="button"
             onClick={() => setMainMode('renamer')}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer ${mainMode === 'renamer'
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
             <FileText className="h-3.5 w-3.5" />
@@ -811,8 +821,8 @@ export default function App() {
             type="button"
             onClick={() => setMainMode('resizer')}
             className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 cursor-pointer ${mainMode === 'resizer'
-                ? 'bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-white dark:bg-neutral-800 text-rose-600 dark:text-rose-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
           >
             <ImageIcon className="h-3.5 w-3.5" />
@@ -830,7 +840,7 @@ export default function App() {
           {/* Nút chuyển đổi giao diện Sáng / Tối / Hệ điều hành */}
           <button
             onClick={toggleTheme}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/90 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/80 active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-neutral-800 active:scale-95 cursor-pointer"
             title={
               themeMode === 'system'
                 ? 'Chế độ hiện tại: Theo Hệ Điều Hành (Bấm để chuyển sang Tối)'
@@ -859,7 +869,7 @@ export default function App() {
 
           <button
             onClick={() => setShowAboutModal(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/90 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-slate-700/80 active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-xs transition-all duration-200 hover:border-indigo-300 dark:hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-neutral-800 active:scale-95 cursor-pointer"
             title="Xem giới thiệu phần mềm & tải bản cập nhật mới nhất từ GitHub"
           >
             <Sparkles className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
@@ -871,7 +881,7 @@ export default function App() {
       {/* ========================================================================= */}
       {/* VÙNG 2: THANH THAO TÁC & THÔNG TIN THƯ MỤC (SUB-HEADER)                  */}
       {/* ========================================================================= */}
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 text-xs text-slate-600 dark:text-slate-400 shadow-2xs z-10">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/80 dark:border-neutral-800 bg-white dark:bg-black px-6 text-xs text-slate-600 dark:text-slate-400 shadow-2xs z-10">
         {/* Bên trái: Thông tin Thư mục hiện tại */}
         <div className="flex items-center gap-2 min-w-0 flex-1 mr-4">
           <FolderOpen className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
@@ -879,7 +889,7 @@ export default function App() {
           {currentFolderPath ? (
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className="truncate font-mono text-indigo-700 dark:text-indigo-300 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs max-w-xs sm:max-w-md md:max-w-xl font-medium"
+                className="truncate font-mono text-indigo-700 dark:text-indigo-300 bg-slate-100 dark:bg-neutral-900 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-neutral-800 shadow-2xs max-w-xs sm:max-w-md md:max-w-xl font-medium"
                 title={currentFolderPath}
               >
                 {currentFolderPath}
@@ -918,11 +928,10 @@ export default function App() {
             <button
               onClick={handleApply}
               disabled={files.length === 0 || loading || isRenamed}
-              className={`flex items-center gap-2 rounded-xl px-4 py-1.5 text-xs font-bold text-white shadow-sm transition-all duration-200 active:scale-95 cursor-pointer ${
-                isRenamed
-                  ? 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed opacity-70'
+              className={`flex items-center gap-2 rounded-xl px-4 py-1.5 text-xs font-bold text-white shadow-sm transition-all duration-200 active:scale-95 cursor-pointer ${isRenamed
+                  ? 'bg-slate-400 dark:bg-neutral-800 cursor-not-allowed opacity-70'
                   : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 shadow-indigo-600/20 disabled:opacity-40 disabled:cursor-not-allowed'
-              }`}
+                }`}
             >
               <Play className="h-3.5 w-3.5 fill-white" />
               <span>{isRenamed ? '✔ Đã Đổi Tên Xong' : 'Bắt Đầu Đổi Tên'}</span>
@@ -931,7 +940,7 @@ export default function App() {
             <button
               onClick={handleRollback}
               disabled={loading}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-neutral-800 hover:text-amber-600 dark:hover:text-amber-400 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               title="Hoàn tác (Undo) phiên đổi tên trước"
             >
               <RotateCcw className="h-3.5 w-3.5 text-amber-500" />
@@ -941,7 +950,7 @@ export default function App() {
             {previewItems.length > 0 && (
               <button
                 onClick={handleExportCsv}
-                className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-emerald-600 dark:hover:text-emerald-400 active:scale-95 cursor-pointer"
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-neutral-800 hover:text-emerald-600 dark:hover:text-emerald-400 active:scale-95 cursor-pointer"
                 title="Xuất báo cáo đổi tên ra CSV"
               >
                 <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-500" />
@@ -952,7 +961,7 @@ export default function App() {
             {files.length > 0 && (
               <button
                 onClick={handleClear}
-                className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1.5 text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:border-rose-800 transition-all duration-200 cursor-pointer shadow-2xs"
+                className="rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-1.5 text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:border-rose-800 transition-all duration-200 cursor-pointer shadow-2xs"
                 title="Xóa danh sách"
               >
                 <Trash2 className="h-4 w-4" />
@@ -970,7 +979,7 @@ export default function App() {
           {/* --------------------------------------------------------------------- */}
           {/* CỘT BÊN TRÁI: SIDEBAR (QUẢN LÝ QUY TẮC & CÀI ĐẶT)                    */}
           {/* --------------------------------------------------------------------- */}
-          <aside className="w-80 sm:w-88 shrink-0 border-r border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col justify-between overflow-hidden shadow-xs">
+          <aside className="w-80 sm:w-88 shrink-0 border-r border-slate-200/80 dark:border-neutral-800 bg-white dark:bg-black flex flex-col justify-between overflow-hidden shadow-xs">
             {/* Phía trên Sidebar: Danh sách Quy Tắc (Cards) */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {/* Header Sidebar & Tab Selector */}
@@ -983,12 +992,12 @@ export default function App() {
                 </div>
 
                 {/* Tab Buttons Pills */}
-                <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 p-1 border border-slate-200/70 dark:border-slate-700/80">
+                <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 dark:bg-neutral-900 p-1 border border-slate-200/70 dark:border-neutral-800">
                   <button
                     onClick={() => setActiveTab('clean')}
                     className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'clean'
-                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                   >
                     <Sparkles className="h-3.5 w-3.5 mb-1" />
@@ -997,8 +1006,8 @@ export default function App() {
                   <button
                     onClick={() => setActiveTab('find_replace')}
                     className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'find_replace'
-                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                   >
                     <Replace className="h-3.5 w-3.5 mb-1" />
@@ -1007,8 +1016,8 @@ export default function App() {
                   <button
                     onClick={() => setActiveTab('numbering')}
                     className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'numbering'
-                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                   >
                     <Hash className="h-3.5 w-3.5 mb-1" />
@@ -1017,8 +1026,8 @@ export default function App() {
                   <button
                     onClick={() => setActiveTab('case')}
                     className={`flex flex-col items-center py-2 px-1 rounded-lg text-[11px] font-semibold transition-all duration-200 cursor-pointer ${activeTab === 'case'
-                        ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
-                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                      ? 'bg-white dark:bg-neutral-800 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                       }`}
                   >
                     <Type className="h-3.5 w-3.5 mb-1" />
@@ -1031,13 +1040,13 @@ export default function App() {
               {activeTab === 'clean' && (
                 <div className="space-y-3 animate-in fade-in duration-200">
                   {/* Card 1: Xóa Dấu Tiếng Việt */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.remove_diacritics}
                         onChange={(e) => updateRule('remove_diacritics', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Xóa Dấu Tiếng Việt</span>
@@ -1049,13 +1058,13 @@ export default function App() {
                   </div>
 
                   {/* Card 2: Xử Lý Khoảng Trắng */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.clean_space}
                         onChange={(e) => updateRule('clean_space', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Xử Lý Khoảng Trắng</span>
@@ -1064,7 +1073,7 @@ export default function App() {
                     </label>
 
                     {rules.clean_space && (
-                      <div className="pl-6 space-y-1 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                      <div className="pl-6 space-y-1 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-neutral-800">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="radio"
@@ -1100,13 +1109,13 @@ export default function App() {
                   </div>
 
                   {/* Card 3: Làm Sạch Ký Tự Cấm OS */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.sanitize}
                         onChange={(e) => updateRule('sanitize', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Làm Sạch Ký Tự Cấm OS</span>
@@ -1124,20 +1133,20 @@ export default function App() {
                           value={rules.sanitize_replacement}
                           onChange={(e) => updateRule('sanitize_replacement', e.target.value)}
                           maxLength={2}
-                          className="w-12 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                          className="w-12 rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                         />
                       </div>
                     )}
                   </div>
 
                   {/* Card 4: Web-safe Slug */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.web_safe_slug}
                         onChange={(e) => updateRule('web_safe_slug', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Chuẩn Hóa Web Slug</span>
@@ -1172,13 +1181,13 @@ export default function App() {
                   </div>
 
                   {/* Card 5: Co Gọn Full Path An Toàn (MAX_PATH) */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.truncate_long_path}
                         onChange={(e) => updateRule('truncate_long_path', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Co Gọn Full Path (MAX_PATH)</span>
@@ -1189,14 +1198,14 @@ export default function App() {
                     </label>
 
                     {rules.truncate_long_path && (
-                      <div className="pl-6 space-y-2 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                      <div className="pl-6 space-y-2 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-neutral-800">
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-slate-500 dark:text-slate-400">Giới hạn tối đa:</span>
                           <input
                             type="number"
                             value={rules.max_path_length}
                             onChange={(e) => updateRule('max_path_length', parseInt(e.target.value) || 250)}
-                            className="w-16 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                            className="w-16 rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                           <span className="text-[11px] text-slate-400">ký tự</span>
                         </div>
@@ -1230,13 +1239,13 @@ export default function App() {
 
               {/* TAB 2: TÌM KIẾM & THAY THẾ */}
               {activeTab === 'find_replace' && (
-                <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-3 animate-in fade-in duration-200">
+                <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-3 animate-in fade-in duration-200">
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={rules.find_replace}
                       onChange={(e) => updateRule('find_replace', e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                      className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                     />
                     <div>
                       <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Bật Tìm &amp; Thay Thế</span>
@@ -1252,7 +1261,7 @@ export default function App() {
                         value={rules.find_text}
                         onChange={(e) => updateRule('find_text', e.target.value)}
                         placeholder="Từ khóa hoặc biểu thức Regex..."
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
 
@@ -1263,7 +1272,7 @@ export default function App() {
                         value={rules.replace_text}
                         onChange={(e) => updateRule('replace_text', e.target.value)}
                         placeholder="Chuỗi mới thay thế..."
-                        className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                        className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2.5 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
 
@@ -1273,7 +1282,7 @@ export default function App() {
                           type="checkbox"
                           checked={rules.find_regex}
                           onChange={(e) => updateRule('find_regex', e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-0 cursor-pointer"
                         />
                         <span>Sử dụng Regex (Biểu thức chính quy)</span>
                       </label>
@@ -1282,7 +1291,7 @@ export default function App() {
                           type="checkbox"
                           checked={rules.find_match_case}
                           onChange={(e) => updateRule('find_match_case', e.target.checked)}
-                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                          className="h-3.5 w-3.5 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-0 cursor-pointer"
                         />
                         <span>Phân biệt chữ HOA / thường</span>
                       </label>
@@ -1295,13 +1304,13 @@ export default function App() {
               {activeTab === 'numbering' && (
                 <div className="space-y-3 animate-in fade-in duration-200">
                   {/* Tiền tố / Hậu tố */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.prefix_suffix}
                         onChange={(e) => updateRule('prefix_suffix', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Thêm Tiền Tố &amp; Hậu Tố</span>
@@ -1317,7 +1326,7 @@ export default function App() {
                           value={rules.prefix_text}
                           onChange={(e) => updateRule('prefix_text', e.target.value)}
                           placeholder="vd: HinhAnh_"
-                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
+                          className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
                         />
                       </div>
                       <div>
@@ -1327,20 +1336,20 @@ export default function App() {
                           value={rules.suffix_text}
                           onChange={(e) => updateRule('suffix_text', e.target.value)}
                           placeholder="vd: _BanChinh"
-                          className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
+                          className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs"
                         />
                       </div>
                     </div>
                   </div>
 
                   {/* Đánh Số Thứ Tự */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2.5">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.numbering}
                         onChange={(e) => updateRule('numbering', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đánh Số Tuần Tự (001, 002...)</span>
@@ -1356,7 +1365,7 @@ export default function App() {
                             type="number"
                             value={rules.numbering_start}
                             onChange={(e) => updateRule('numbering_start', parseInt(e.target.value) || 1)}
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                            className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                         <div>
@@ -1365,7 +1374,7 @@ export default function App() {
                             type="number"
                             value={rules.numbering_step}
                             onChange={(e) => updateRule('numbering_step', parseInt(e.target.value) || 1)}
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                            className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                         <div>
@@ -1374,7 +1383,7 @@ export default function App() {
                             type="number"
                             value={rules.numbering_padding}
                             onChange={(e) => updateRule('numbering_padding', parseInt(e.target.value) || 3)}
-                            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                            className="w-full rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-1.5 py-1 text-center text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                           />
                         </div>
                       </div>
@@ -1418,7 +1427,7 @@ export default function App() {
                           type="text"
                           value={rules.numbering_custom_text}
                           onChange={(e) => updateRule('numbering_custom_text', e.target.value)}
-                          className="w-16 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                          className="w-16 rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                         />
                       </div>
                     </div>
@@ -1430,13 +1439,13 @@ export default function App() {
               {activeTab === 'case' && (
                 <div className="space-y-3 animate-in fade-in duration-200">
                   {/* Đổi kiểu chữ */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.case_transform}
                         onChange={(e) => updateRule('case_transform', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đổi Định Dạng Chữ</span>
@@ -1445,7 +1454,7 @@ export default function App() {
                     </label>
 
                     {rules.case_transform && (
-                      <div className="pl-6 space-y-1.5 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-700">
+                      <div className="pl-6 space-y-1.5 pt-1 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-neutral-800">
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="radio"
@@ -1491,13 +1500,13 @@ export default function App() {
                   </div>
 
                   {/* Đổi Đuôi Mở Rộng */}
-                  <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
+                  <div className="rounded-xl border border-slate-200/90 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 space-y-2">
                     <label className="flex items-start gap-2.5 cursor-pointer">
                       <input
                         type="checkbox"
                         checked={rules.change_extension}
                         onChange={(e) => updateRule('change_extension', e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+                        className="h-4 w-4 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-indigo-500 mt-0.5 cursor-pointer"
                       />
                       <div>
                         <span className="font-semibold text-slate-800 dark:text-slate-100 text-xs">Đổi Đuôi Mở Rộng (Extension)</span>
@@ -1513,7 +1522,7 @@ export default function App() {
                           value={rules.new_extension}
                           onChange={(e) => updateRule('new_extension', e.target.value)}
                           placeholder="png"
-                          className="w-20 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                          className="w-20 rounded-lg border border-slate-300 dark:border-neutral-800 bg-white dark:bg-black px-2 py-1 text-center text-xs font-mono font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
                         />
                       </div>
                     )}
@@ -1523,9 +1532,9 @@ export default function App() {
             </div>
 
             {/* Phía dưới Sidebar: Cài Đặt Phạm Vi Quét & Benchmark */}
-            <div className="border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 p-4 space-y-3">
+            <div className="border-t border-slate-200/80 dark:border-neutral-800 bg-slate-50/80 dark:bg-black p-4 space-y-3">
               {/* Settings Card */}
-              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/50 p-3 space-y-2 shadow-2xs">
+              <div className="rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a] p-3 space-y-2 shadow-2xs">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 dark:text-slate-200">
                   <Settings className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>CÀI ĐẶT PHẠM VI QUÉT</span>
@@ -1537,27 +1546,27 @@ export default function App() {
                       type="checkbox"
                       checked={recursiveScan}
                       onChange={(e) => handleOptionToggle('recursive', e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-0 cursor-pointer"
                     />
                     <span>Quét sâu thư mục con (Recursive)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 dark:hover:text-white transition">
                     <input
                       type="checkbox"
-                      checked={includeHidden}
-                      onChange={(e) => handleOptionToggle('hidden', e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                      checked={includeFolders}
+                      onChange={(e) => handleOptionToggle('folders', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-0 cursor-pointer"
                     />
-                    <span>Bao gồm cả tệp &amp; thư mục ẩn</span>
+                    <span>Đổi tên cả Thư mục (Folder)</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer hover:text-slate-900 dark:hover:text-white transition">
                     <input
                       type="checkbox"
-                      checked={includeFolders}
-                      onChange={(e) => handleOptionToggle('folders', e.target.checked)}
-                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-slate-600 dark:bg-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+                      checked={includeHidden}
+                      onChange={(e) => handleOptionToggle('hidden', e.target.checked)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 dark:border-neutral-700 dark:bg-neutral-800 text-indigo-600 focus:ring-0 cursor-pointer"
                     />
-                    <span>Đổi tên cả Thư mục (Folder)</span>
+                    <span>Bao gồm cả tệp &amp; thư mục ẩn</span>
                   </label>
                 </div>
               </div>
@@ -1573,11 +1582,11 @@ export default function App() {
           {/* --------------------------------------------------------------------- */}
           {/* KHU VỰC CHÍNH (MAIN CONTENT - BẢNG XEM TRƯỚC / DROPZONE)               */}
           {/* --------------------------------------------------------------------- */}
-          <main className="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-slate-950/50">
+          <main className="flex-1 flex flex-col overflow-hidden bg-slate-50/50 dark:bg-black">
             {/* Thanh Tìm Kiếm & Bộ Lọc Nhanh (chỉ hiển thị khi đã nạp tệp tin) */}
 
             {files.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/90 px-6 py-2.5 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 dark:border-neutral-800 bg-slate-50/90 dark:bg-black px-6 py-2.5 text-xs">
                 {/* Ô Tìm kiếm */}
                 <div className="relative w-72">
                   <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
@@ -1586,7 +1595,7 @@ export default function App() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Tìm kiếm theo tên file..."
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                    className="w-full rounded-xl border border-slate-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 pl-9 pr-8 py-1.5 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-2xs focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
                   />
                   {searchQuery && (
                     <button
@@ -1603,8 +1612,8 @@ export default function App() {
                   <button
                     onClick={() => setStatusFilter('all')}
                     className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'all'
-                        ? 'bg-slate-800 dark:bg-slate-700 text-white shadow-2xs'
-                        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                      ? 'bg-slate-800 dark:bg-neutral-800 text-white shadow-2xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-neutral-900'
                       }`}
                   >
                     Tất cả ({previewItems.length.toLocaleString()})
@@ -1612,8 +1621,8 @@ export default function App() {
                   <button
                     onClick={() => setStatusFilter('renamed')}
                     className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'renamed'
-                        ? 'bg-emerald-600 text-white shadow-2xs'
-                        : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
                       }`}
                   >
                     Đã đổi
@@ -1621,8 +1630,8 @@ export default function App() {
                   <button
                     onClick={() => setStatusFilter('unchanged')}
                     className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'unchanged'
-                        ? 'bg-slate-600 dark:bg-slate-700 text-white shadow-2xs'
-                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800'
+                      ? 'bg-slate-600 dark:bg-neutral-800 text-white shadow-2xs'
+                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-neutral-900'
                       }`}
                   >
                     Giữ nguyên
@@ -1630,8 +1639,8 @@ export default function App() {
                   <button
                     onClick={() => setStatusFilter('collision')}
                     className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'collision'
-                        ? 'bg-amber-600 text-white shadow-2xs'
-                        : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
+                      ? 'bg-amber-600 text-white shadow-2xs'
+                      : 'text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40'
                       }`}
                   >
                     Trùng: _1
@@ -1640,8 +1649,8 @@ export default function App() {
                     <button
                       onClick={() => setStatusFilter('long_path')}
                       className={`rounded-lg px-2.5 py-1 font-semibold transition-all duration-200 cursor-pointer ${statusFilter === 'long_path'
-                          ? 'bg-rose-600 text-white shadow-2xs'
-                          : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60'
+                        ? 'bg-rose-600 text-white shadow-2xs'
+                        : 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 hover:bg-rose-100 dark:hover:bg-rose-900/60'
                         }`}
                     >
                       ⚠️ Dài &gt; 250 ({longPathCount})
@@ -1655,10 +1664,10 @@ export default function App() {
             {message && (
               <div
                 className={`flex items-center justify-between px-6 py-2.5 text-xs font-medium border-b animate-in fade-in duration-150 ${message.type === 'success'
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                    : message.type === 'error'
-                      ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-                      : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  : message.type === 'error'
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                    : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-800 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
                   }`}
               >
                 <span>{message.text}</span>
@@ -1726,7 +1735,7 @@ export default function App() {
                     </button>
                     <button
                       onClick={handleSelectFiles}
-                      className="flex items-center gap-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-400 dark:hover:border-slate-600 active:scale-95 cursor-pointer"
+                      className="flex items-center gap-2 rounded-xl border border-slate-300 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-5 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs transition-all duration-200 hover:bg-slate-50 dark:hover:bg-neutral-800 hover:border-slate-400 dark:hover:border-slate-600 active:scale-95 cursor-pointer"
                     >
                       <FileText className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                       <span>Chọn Tệp Tin</span>
@@ -1737,21 +1746,21 @@ export default function App() {
                 /* BẢNG DANH SÁCH FILE XEM TRƯỚC (CLEAN TABLE) */
                 <div className="h-full overflow-y-auto">
                   <table className="w-full border-collapse text-left text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-slate-900/95 backdrop-blur-xs border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                    <thead className="sticky top-0 z-10 bg-slate-100/95 dark:bg-[#0a0a0a]/95 backdrop-blur-xs border-b border-slate-200/80 dark:border-neutral-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                       <tr>
-                        <th className="py-3 px-4 w-12 text-center">#</th>
-                        <th className="py-3 px-4 w-1/3">Tên Ban Đầu</th>
-                        <th className="py-3 px-4 w-1/3">Tên Mới Dự Kiến</th>
-                        <th className="py-3 px-3 w-28 text-center">Độ Dài Path</th>
+                        <th className="py-3 px-3 w-10 text-center">#</th>
+                        <th className="py-3 px-4 w-1/4">Tên Ban Đầu</th>
+                        <th className="py-3 px-4 w-1/4">Tên Mới Dự Kiến</th>
+                        <th className="py-3 px-4 w-1/3">Thư Mục (Bấm để mở)</th>
+                        <th className="py-3 px-2 w-24 text-center">Độ Dài Path</th>
                         <th className="py-3 px-4 w-32 text-center">Trạng Thái</th>
-                        <th className="py-3 px-3 w-16 text-center">Thao Tác</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/80 bg-white dark:bg-slate-950">
+                    <tbody className="divide-y divide-slate-200/60 dark:divide-neutral-850 bg-white dark:bg-black">
                       {visibleItems.map((item, idx) => (
                         <tr key={item.id} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-950/25 transition-colors duration-150">
                           {/* Index */}
-                          <td className="py-2.5 px-4 text-center font-mono text-slate-400 dark:text-slate-500 text-[11px]">{idx + 1}</td>
+                          <td className="py-2.5 px-3 text-center font-mono text-slate-400 dark:text-slate-500 text-[11px]">{idx + 1}</td>
 
                           {/* Old Name */}
                           <td className="py-2.5 px-4 font-medium text-slate-800 dark:text-slate-200 break-all">{item.old_name}</td>
@@ -1761,8 +1770,24 @@ export default function App() {
                             <span className="font-semibold text-indigo-600 dark:text-indigo-400">{item.new_name}</span>
                           </td>
 
+                          {/* Folder Directory với Thao Tác Mở Thư Mục Tích Hợp */}
+                          <td className="py-2.5 px-4 max-w-[260px]">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFolder(item.path)}
+                              className="group/folder flex items-center gap-1.5 w-full text-left font-mono text-xs text-slate-600 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 -m-1 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-900 transition-all cursor-pointer"
+                              title={`Bấm để mở thư mục trong File Explorer:\n${getFileDir(item)}`}
+                            >
+                              <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500/80 group-hover/folder:text-amber-500 transition-colors" />
+                              <span className="truncate flex-1 underline decoration-dotted decoration-slate-300 dark:decoration-neutral-700 underline-offset-2 group-hover/folder:decoration-indigo-500">
+                                {getFileDir(item)}
+                              </span>
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-0 group-hover/folder:opacity-100 text-indigo-500 transition-opacity" />
+                            </button>
+                          </td>
+
                           {/* Path Length Badge */}
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="py-2.5 px-2 text-center">
                             <div className="inline-flex items-center gap-1 font-mono text-[11px]">
                               <span className="text-slate-500 dark:text-slate-400">{item.path_length}</span>
                               {item.is_long_path && (
@@ -1786,7 +1811,7 @@ export default function App() {
                                 Trùng: _1
                               </span>
                             ) : item.status === 'unchanged' ? (
-                              <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-2.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                              <span className="inline-flex items-center rounded-full bg-slate-100 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 px-2.5 py-0.5 text-[10px] font-medium text-slate-500 dark:text-slate-400">
                                 Giữ nguyên
                               </span>
                             ) : (
@@ -1795,17 +1820,6 @@ export default function App() {
                               </span>
                             )}
                           </td>
-
-                          {/* Thao tác (Open Explorer) */}
-                          <td className="py-2.5 px-3 text-center">
-                            <button
-                              onClick={() => handleOpenFolder(item.path)}
-                              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-                              title="Định vị trong File Explorer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1813,7 +1827,7 @@ export default function App() {
 
                   {/* Thanh phân trang hiển thị khi danh sách lớn */}
                   {filteredItems.length > displayLimit && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-6 py-3 text-xs text-slate-500 dark:text-slate-400">
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-black px-6 py-3 text-xs text-slate-500 dark:text-slate-400">
                       <span>
                         Đang hiển thị <strong>{visibleItems.length.toLocaleString()}</strong> /{' '}
                         <strong>{filteredItems.length.toLocaleString()}</strong> mục.
@@ -1829,7 +1843,7 @@ export default function App() {
                         <button
                           onClick={() => handleExpandDisplay(filteredItems.length)}
                           disabled={isExpanding}
-                          className="rounded-lg bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 px-3 py-1 text-slate-700 dark:text-slate-300 font-medium transition cursor-pointer"
+                          className="rounded-lg bg-slate-200/80 dark:bg-neutral-900 hover:bg-slate-300 dark:hover:bg-neutral-800 px-3 py-1 text-slate-700 dark:text-slate-300 font-medium transition cursor-pointer"
                         >
                           {isExpanding && <Loader2 className="h-3 w-3 animate-spin mr-1 inline" />}
                           Hiển thị tất cả
@@ -1842,7 +1856,7 @@ export default function App() {
             </div>
 
             {/* Footer Bar */}
-            <div className="flex h-8 shrink-0 items-center justify-between border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="flex h-8 shrink-0 items-center justify-between border-t border-slate-200/80 dark:border-neutral-800 bg-white dark:bg-black px-6 text-[11px] text-slate-500 dark:text-slate-400">
               <span>Sẵn sàng: {filteredItems.length.toLocaleString()} tệp tin</span>
               <span className="font-mono">Rust Tauri v2 • React 18 + Tailwind CSS</span>
             </div>
@@ -1892,30 +1906,30 @@ export default function App() {
 
       {/* Overlay Tiến Độ Giảm Dung Lượng Ảnh Đa Luồng */}
       {isResizing && resizeProgress && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-6 shadow-2xl space-y-4 text-center">
-            <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 border border-rose-100">
-              <Loader2 className="h-7 w-7 text-rose-600 animate-spin" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-rose-200 dark:border-neutral-800 bg-white dark:bg-black p-6 shadow-2xl space-y-4 text-center">
+            <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/60">
+              <Loader2 className="h-7 w-7 text-rose-600 dark:text-rose-400 animate-spin" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Đang Giảm Kích Thước &amp; Ghi Đè Ảnh...</h3>
-              <p className="text-xs text-slate-500 mt-1 truncate max-w-xs mx-auto font-mono">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Đang Giảm Kích Thước &amp; Ghi Đè Ảnh...</h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 truncate max-w-xs mx-auto font-mono">
                 {resizeProgress.current_file}
               </p>
             </div>
 
-            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+            <div className="w-full bg-slate-100 dark:bg-neutral-900 rounded-full h-2.5 overflow-hidden">
               <div
                 className="bg-gradient-to-r from-rose-600 to-indigo-600 h-full transition-all duration-150"
                 style={{ width: `${resizeProgress.percent}%` }}
               />
             </div>
 
-            <div className="flex justify-between text-xs font-mono text-slate-500">
+            <div className="flex justify-between text-xs font-mono text-slate-500 dark:text-zinc-400">
               <span>
                 {resizeProgress.current} / {resizeProgress.total} ảnh
               </span>
-              <span className="font-bold text-rose-600">{resizeProgress.percent}%</span>
+              <span className="font-bold text-rose-600 dark:text-rose-400">{resizeProgress.percent}%</span>
             </div>
           </div>
         </div>

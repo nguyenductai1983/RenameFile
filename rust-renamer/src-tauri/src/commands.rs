@@ -47,6 +47,8 @@ pub fn cancel_scan(state: tauri::State<'_, AppState>) {
 pub struct FileItem {
     pub id: String,
     pub path: String,
+    #[serde(default)]
+    pub folder: String,
     pub old_name: String,
     pub new_name: String,
     pub status: String,
@@ -331,12 +333,14 @@ pub async fn preview_renaming(
             };
 
             let parent = item.original_path.parent().unwrap_or_else(|| Path::new(""));
-            let full_path_len = parent.to_string_lossy().len() + 1 + item.new_name.len();
+            let folder = parent.to_string_lossy().into_owned();
+            let full_path_len = folder.len() + 1 + item.new_name.len();
             let is_long_path = full_path_len >= 250;
 
             FileItem {
                 id: Uuid::new_v4().to_string(),
                 path: item.original_path.to_string_lossy().into_owned(),
+                folder,
                 old_name: item.original_name,
                 new_name: item.new_name,
                 status: status_str.to_string(),
@@ -406,10 +410,16 @@ pub async fn apply_renaming(
 
             let full_path_len = final_path.len();
             let is_long_path = full_path_len >= 250;
+            let folder = std::path::Path::new(&final_path)
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(""))
+                .to_string_lossy()
+                .into_owned();
 
             FileItem {
                 id: orig_fi.id,
                 path: final_path,
+                folder,
                 old_name: orig_fi.old_name, // Tuyệt đối giữ nguyên tên ban đầu để đối chiếu
                 new_name: ri.new_name,
                 status: status_str.to_string(),

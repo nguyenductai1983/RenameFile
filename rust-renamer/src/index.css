@@ -8,6 +8,11 @@ html, body, #root {
   padding: 0;
 }
 
+html.dark, body.dark, .dark #root {
+  background-color: #000000;
+  color: #f4f4f5;
+}
+
 /* Custom scrollbars for clean desktop app feeling */
 ::-webkit-scrollbar {
   width: 8px;
@@ -27,12 +32,17 @@ html, body, #root {
   background: #94a3b8;
 }
 
+.dark ::-webkit-scrollbar-track {
+  background: #000000;
+}
+
 .dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #27272a;
+  border-radius: 4px;
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #3f3f46;
 }
 
 @keyframes progress-indeterminate {

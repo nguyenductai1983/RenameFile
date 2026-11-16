@@ -9,6 +9,7 @@ namespace CSharpFileRenamer.Core
         public int Index { get; set; }
         public string OriginalPath { get; set; } = "";
         public string OriginalName { get; set; } = "";
+        public string DirectoryPath => !string.IsNullOrEmpty(OriginalPath) ? Path.GetDirectoryName(OriginalPath) ?? "" : "";
         
         private string _newName = "";
         public string NewName 
